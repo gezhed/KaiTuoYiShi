@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { API设置, 游戏设置 } from '@/models/settings';
-import type { 剧情编织分段, 剧情编织系列, 剧情编织系统, 剧情编织运行状态 } from '@/models/storyWeaving';
+import type { 剧情编织分段, 剧情编织系列, 剧情编织系统, 剧情编织运行状态, 剧情编织分类 } from '@/models/storyWeaving';
 import {
   创建剧情编织系列FromText,
   归一化剧情编织系统,
@@ -22,6 +22,7 @@ import {
   buildSeriesProgressAnchor,
   draftFromSegment,
   getPreviousCompleted,
+  uniqueText,
   type SegmentDraft,
 } from './plot/logic';
 import {
@@ -53,12 +54,55 @@ export function PlotPanel({ storyWeaving, onStoryWeavingChange, gameSettings, ap
   const [pasteTitle, setPasteTitle] = useState('');
   const [pasteText, setPasteText] = useState('');
   const [drafts, setDrafts] = useState<Record<string, SegmentDraft>>({});
-  const [trackTab, setTrackTab] = useState<TrackTab>('canon');
+  const [trackTab, setTrackTab] = useState<TrackTab>(() => {
+    const current = storyWeaving.系列列表.find((series) => series.id === storyWeaving.当前系列ID);
+    if (current?.剧情来源 === '世界书') return 'worldbook';
+    if (current?.来源类型 === 'custom') return 'custom';
+    return 'canon';
+  });
+  const [categoryFilter, setCategoryFilter] = useState<'全部' | 剧情编织分类>('全部');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const normalized = useMemo(() => 归一化剧情编织系统(storyWeaving), [storyWeaving]);
-  const canonSeries = useMemo(() => normalized.系列列表.filter((series) => series.来源类型 === 'canon'), [normalized.系列列表]);
-  const customSeries = useMemo(() => normalized.系列列表.filter((series) => series.来源类型 !== 'canon'), [normalized.系列列表]);
-  const visibleSeries = trackTab === 'canon' ? canonSeries : customSeries;
+  const canonSeries = useMemo(() => normalized.系列列表.filter((series) => series.来源类型 === 'canon' && series.剧情来源 !== '世界书'), [normalized.系列列表]);
+  const worldbookSeries = useMemo(() => normalized.系列列表.filter((series) => series.来源类型 === 'canon' && series.剧情来源 === '世界书'), [normalized.系列列表]);
+  const customSeries = useMemo(() => normalized.系列列表.filter((series) => series.来源类型 === 'custom'), [normalized.系列列表]);
+  const baseVisibleSeries = trackTab === 'canon' ? canonSeries : trackTab === 'worldbook' ? worldbookSeries : customSeries;
+  const seriesCategory = (series: 剧情编织系列): 剧情编织分类 => {
+    if (series.剧情分类) return series.剧情分类;
+    if (series.来源类型 !== 'canon') return '其他';
+    return /(^|_)side_|【支线】|支线/.test(`${series.id}\n${series.标题}`) ? '支线' : '主线';
+  };
+  const availableCategories = useMemo(
+    () => Array.from(new Set(baseVisibleSeries.map(seriesCategory))),
+    [baseVisibleSeries],
+  );
+  const query = searchQuery.trim();
+  const segmentMatchesQuery = useCallback((segment: 剧情编织分段) => !query || [
+    segment.标题,
+    segment.章节范围,
+    segment.剧情地区 ?? '',
+    ...segment.章节标题,
+    ...segment.登场角色,
+    ...segment.涉及地点,
+    segment.本段概括.slice(0, 160),
+  ].join('\n').includes(query), [query]);
+  const seriesMatchesQuery = useCallback((series: 剧情编织系列) => {
+    if (!query) return true;
+    return [
+      series.标题,
+      series.作品名,
+      series.剧情地区 ?? '',
+      series.剧情版本 ?? '',
+      series.核心角色.join(' '),
+      ...series.分段列表.map((segment) => [segment.标题, segment.章节范围, segment.剧情地区 ?? '', ...segment.章节标题, ...segment.登场角色, ...segment.涉及地点].join(' ')),
+      ...series.章节列表.map((chapter) => chapter.标题),
+    ].join('\n').includes(query);
+  }, [query]);
+  const visibleSeries = useMemo(() => baseVisibleSeries.filter((series) => (
+    (categoryFilter === '全部' || seriesCategory(series) === categoryFilter)
+    && seriesMatchesQuery(series)
+  )), [baseVisibleSeries, categoryFilter, seriesMatchesQuery]);
   const activeSeries = normalized.系列列表.find((s) => s.id === normalized.当前系列ID) ?? normalized.系列列表.at(0);
   const activeProgress = normalized.当前进度?.当前系列ID === activeSeries?.id ? normalized.当前进度 : undefined;
   const planningAnalysis = useMemo(() => buildStoryPlanningAnalysis(normalized), [normalized]);
@@ -66,8 +110,9 @@ export function PlotPanel({ storyWeaving, onStoryWeavingChange, gameSettings, ap
   const viewSeries = visibleSeries.find((s) => s.id === expandedSeriesId)
     ?? visibleSeries.find((s) => s.id === activeSeries?.id)
     ?? visibleSeries.at(0);
-  const selectedSegment = viewSeries?.分段列表.find((s) => s.id === selectedSegmentId)
-    ?? viewSeries?.分段列表.find((s) => s.组号 === viewSeries.当前分段组号)
+  const selectedSegment = viewSeries?.分段列表.find((s) => s.id === selectedSegmentId && segmentMatchesQuery(s))
+    ?? viewSeries?.分段列表.find((s) => s.组号 === viewSeries.当前分段组号 && segmentMatchesQuery(s))
+    ?? (query ? viewSeries?.分段列表.find(segmentMatchesQuery) : undefined)
     ?? viewSeries?.分段列表[0];
   const selectedProgress = normalized.当前进度?.当前分段ID === selectedSegment?.id ? normalized.当前进度 : undefined;
   const visibleSystem = useMemo<剧情编织系统>(() => ({
@@ -234,6 +279,21 @@ export function PlotPanel({ storyWeaving, onStoryWeavingChange, gameSettings, ap
     setMessage('剧情编织完整备份已导出。');
   };
 
+  const handleExportWorldbookJson = () => {
+    const worldbook = normalized.系列列表.filter((series) => series.来源类型 === 'canon' && series.剧情来源 === '世界书');
+    if (!worldbook.length) {
+      setMessage('没有可导出的世界书剧情轨道。');
+      return;
+    }
+    const currentWorldbook = worldbook.find((series) => series.id === normalized.当前系列ID) ?? worldbook[0];
+    downloadStoryWeavingJson(归一化剧情编织系统({
+      系列列表: worldbook,
+      当前系列ID: currentWorldbook.id,
+      当前进度: normalized.当前进度?.当前系列ID === currentWorldbook.id ? normalized.当前进度 : buildSeriesProgressAnchor(undefined, currentWorldbook, '导出世界书剧情轨道'),
+    }), 'kaituo-story-weaving-worldbook');
+    setMessage(`已导出世界书剧情轨道：${worldbook.length} 个。`);
+  };
+
   const handleImportPasted = async () => {
     await handleImportText(pasteText, pasteTitle);
     setPasteText('');
@@ -285,7 +345,36 @@ export function PlotPanel({ storyWeaving, onStoryWeavingChange, gameSettings, ap
   };
 
   const handleToggleSeriesInjection = async (series: 剧情编织系列) => {
-    await replaceSeries({ ...series, 激活注入: !series.激活注入, updatedAt: Date.now() });
+    const nextActive = !series.激活注入;
+    const now = Date.now();
+    const nextSeries: 剧情编织系列 = { ...series, 激活注入: nextActive, updatedAt: now };
+    const currentProgress = normalized.当前进度;
+    const isCurrentSeries = currentProgress?.当前系列ID === series.id;
+    const isMainline = !series.剧情分类 || series.剧情分类 === '主线';
+    const nextProgress = currentProgress && isCurrentSeries && isMainline
+      ? {
+          ...currentProgress,
+          // 恢复注入后不立刻用旧正文判定：等下一段新正文由 stage10 消费并清掉这个标记。
+          暂停恢复待判定: nextActive,
+          推进证据: [],
+          连续推进证据回合: 0,
+          卡段回合数: 0,
+          最近判定理由: uniqueText([
+            ...(currentProgress.最近判定理由 ?? []),
+            nextActive ? '手动恢复剧情注入，等待下一段新正文再判定' : '手动暂停剧情注入，停止 AI 推进判定',
+          ], 8),
+          updatedAt: now,
+        }
+      : currentProgress;
+    await persist({
+      ...normalized,
+      当前系列ID: series.id,
+      系列列表: normalized.系列列表.map((item) => item.id === series.id ? nextSeries : item),
+      当前进度: nextProgress,
+    });
+    setMessage(nextActive
+      ? `已恢复剧情注入：${series.标题}。下一段新正文生成后再进行推进判定。`
+      : `已暂停剧情注入：${series.标题}。暂停期间不会调用 AI 进行剧情推进判定。`);
   };
 
   const handleSetCurrent = async (series: 剧情编织系列, group: number) => {
@@ -344,6 +433,10 @@ export function PlotPanel({ storyWeaving, onStoryWeavingChange, gameSettings, ap
   };
 
   const handleDecompose = async (series: 剧情编织系列, segment: 剧情编织分段) => {
+    if (segment.运行状态 === '已经历') {
+      setMessage('该分段已标记为「已经历」，AI 不会再次修改；如需调整请手动编辑。');
+      return;
+    }
     const config = buildStoryWeavingApiConfig(gameSettings, apiSettings);
     if (!config) {
       window.alert('剧情编织 API 未配置。请先到设置 → 剧情编织 配置模型，或配置主 API 作为回退。');
@@ -483,6 +576,7 @@ export function PlotPanel({ storyWeaving, onStoryWeavingChange, gameSettings, ap
             <button className="panel-btn" onClick={() => jsonInputRef.current?.click()}>导入 JSON</button>
             <button className="panel-btn" onClick={() => void handleRestoreCanonPresets()}>恢复内置原著</button>
             <button className="panel-btn" disabled={!customSeries.length} onClick={handleExportCustomJson}>导出自制</button>
+            <button className="panel-btn" disabled={!worldbookSeries.length} onClick={handleExportWorldbookJson}>导出世界书</button>
             <button className="panel-btn" disabled={!normalized.系列列表.length} onClick={handleExportAllJson}>导出全部备份</button>
           </div>
           <div
@@ -524,8 +618,9 @@ export function PlotPanel({ storyWeaving, onStoryWeavingChange, gameSettings, ap
                   {activeSeries && (
                     <>
                       <span style={{ color: activeSeries.来源类型 === 'canon' ? 'rgb(var(--tj-accent-primary))' : 'rgba(145,210,175,0.9)' }}>
-                        {activeSeries.来源类型 === 'canon' ? '原著剧情' : '自制剧情'}
+                        {activeSeries.来源类型 === 'canon' ? (activeSeries.剧情来源 === '世界书' ? '世界书剧情' : '原著剧情') : '自制剧情'}
                       </span>
+                      {activeSeries.剧情分类 && <span>{activeSeries.剧情分类}{activeSeries.剧情地区 && activeSeries.剧情地区 !== '多地区' ? ` · ${activeSeries.剧情地区}` : ''}{activeSeries.剧情版本 ? ` · v${activeSeries.剧情版本}` : ''}</span>}
                       <span>当前段 {activeProgress?.当前分段组号 ?? activeSeries.当前分段组号}</span>
                       {activeProgress && <span>推进状态 {activeProgress.推进状态}</span>}
                     </>
@@ -562,6 +657,7 @@ export function PlotPanel({ storyWeaving, onStoryWeavingChange, gameSettings, ap
               <div className="flex shrink-0 gap-1 rounded-none p-1" style={{ background: 'rgba(var(--tj-bg-primary),0.58)', border: '1px solid rgba(var(--tj-tech-cyan), var(--tj-edge-tint-weak))', clipPath: smallClip }}>
                 {([
                   ['canon', '原著剧情', canonSeries.length],
+                  ['worldbook', '世界书剧情', worldbookSeries.length],
                   ['custom', '自制剧情', customSeries.length],
                 ] as const).map(([tab, label, count]) => {
                   const active = trackTab === tab;
@@ -569,7 +665,10 @@ export function PlotPanel({ storyWeaving, onStoryWeavingChange, gameSettings, ap
                     <button
                       key={tab}
                       type="button"
-                      onClick={() => setTrackTab(tab)}
+                      onClick={() => {
+                        setTrackTab(tab);
+                        setCategoryFilter('全部');
+                      }}
                       className="px-3 py-1.5 text-[12px] transition-all"
                       style={{
                         color: active ? 'rgb(var(--tj-text-primary))' : 'rgba(var(--tj-text-secondary),0.78)',
@@ -585,6 +684,42 @@ export function PlotPanel({ storyWeaving, onStoryWeavingChange, gameSettings, ap
               </div>
             </div>
 
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div className="kaituo-options-scroll flex min-w-0 gap-1 overflow-x-auto pb-1">
+                {(['全部', ...availableCategories] as Array<'全部' | 剧情编织分类>).map((category) => {
+                  const active = categoryFilter === category;
+                  return (
+                    <button
+                      key={category}
+                      type="button"
+                      onClick={() => setCategoryFilter(category)}
+                      className="shrink-0 px-2.5 py-1 text-[11px] transition-all"
+                      style={{
+                        color: active ? 'rgb(var(--tj-text-primary))' : 'rgba(var(--tj-text-secondary),0.76)',
+                        background: active ? 'rgba(var(--tj-accent-primary),0.12)' : 'rgba(var(--tj-bg-primary),0.5)',
+                        border: active ? '1px solid rgba(var(--tj-accent-primary), var(--tj-edge-tint-strong))' : '1px solid rgba(var(--tj-tech-cyan), var(--tj-edge-tint-weak))',
+                        clipPath: smallClip,
+                      }}
+                    >
+                      {category}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex min-w-0 items-center gap-2 md:w-[320px]">
+                <input
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="搜索系列 / 章节 / 角色 / 地点"
+                  className="kaituo-input min-w-0 flex-1 px-2.5 py-1.5 text-xs"
+                  style={{ clipPath: smallClip }}
+                />
+                {searchQuery && (
+                  <button className="panel-btn px-2 py-1 text-[11px]" onClick={() => setSearchQuery('')}>清除</button>
+                )}
+              </div>
+            </div>
+
             {hasCrossTrackCurrent && (
               <div
                 className="px-3 py-2 text-xs leading-relaxed"
@@ -595,7 +730,7 @@ export function PlotPanel({ storyWeaving, onStoryWeavingChange, gameSettings, ap
                   clipPath: smallClip,
                 }}
               >
-                检测到原著与自制轨道都存在“当前”分段。系统仍只会注入上方的主轨道，另一个建议标记为暂停、支线或偏离，避免正文抢线。
+                检测到多个剧情轨道都存在“当前”分段。系统仍只会注入上方的主轨道，另一个建议标记为暂停、支线或偏离，避免正文抢线。
               </div>
             )}
 
@@ -632,9 +767,12 @@ export function PlotPanel({ storyWeaving, onStoryWeavingChange, gameSettings, ap
                       </span>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: 'rgba(var(--tj-text-secondary),0.72)' }}>
-                      <span>{series.章节列表.length} 章 · {series.分段列表.length} 段</span>
-                      <span style={{ color: series.来源类型 === 'canon' ? 'rgb(var(--tj-accent-primary))' : 'rgba(145,210,175,0.9)' }}>
-                        {series.来源类型 === 'canon' ? '原著轨道' : '自制轨道'}
+                      <span>{seriesCategory(series)}</span>
+                      {series.剧情地区 && series.剧情地区 !== '多地区' && <span>· {series.剧情地区}</span>}
+                      {series.剧情版本 && <span>· v{series.剧情版本}</span>}
+                      <span>· {series.章节列表.length} 章 · {series.分段列表.length} 段</span>
+                      <span style={{ color: series.来源类型 === 'canon' ? (series.剧情来源 === '世界书' ? 'rgba(145,210,175,0.9)' : 'rgb(var(--tj-accent-primary))') : 'rgba(145,210,175,0.9)' }}>
+                        {series.来源类型 === 'canon' ? (series.剧情来源 === '世界书' ? '世界书轨道' : '原著轨道') : '自制轨道'}
                       </span>
                     </div>
                   </button>
@@ -645,9 +783,13 @@ export function PlotPanel({ storyWeaving, onStoryWeavingChange, gameSettings, ap
                   className="min-w-[260px] px-3 py-3 text-xs leading-relaxed"
                   style={{ color: 'rgba(var(--tj-text-secondary),0.78)', background: 'rgba(var(--tj-bg-primary),0.5)', border: '1px solid rgba(var(--tj-tech-cyan), var(--tj-edge-tint-weak))', clipPath: smallClip }}
                 >
-                  {trackTab === 'canon'
-                    ? '暂无原著剧情轨道。可以点击“恢复内置原著”重新载入。'
-                    : '暂无自制剧情轨道。导入 TXT 或粘贴文本后会显示在这里。'}
+                  {query
+                    ? '没有匹配的剧情系列或分段，试试缩短关键词。'
+                    : trackTab === 'canon'
+                      ? '暂无原著剧情轨道。可以点击“恢复内置原著”重新载入。'
+                      : trackTab === 'worldbook'
+                        ? '暂无世界书剧情轨道。内置世界书剧情随客户端预置加载。'
+                        : '暂无自制剧情轨道。导入 TXT 或粘贴文本后会显示在这里。'}
                 </div>
               )}
             </div>
@@ -703,6 +845,7 @@ export function PlotPanel({ storyWeaving, onStoryWeavingChange, gameSettings, ap
               selectedSegmentId={selectedSegment?.id ?? null}
               expandedSeriesId={effectiveExpandedSeriesId}
               busyId={busyId}
+              searchQuery={searchQuery}
               onSelectSeries={handlePreviewSeries}
               onSelectSegment={(segment) => setSelectedSegmentId(segment.id)}
               onSelectChapter={(series, chapterSeq) => {

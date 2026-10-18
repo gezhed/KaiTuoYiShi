@@ -122,7 +122,7 @@ export function EmptyState() {
   );
 }
 
-export function TrackEmptyState({ trackTab }: { trackTab: 'canon' | 'custom' }) {
+export function TrackEmptyState({ trackTab }: { trackTab: 'canon' | 'worldbook' | 'custom' }) {
   return (
     <div
       className="flex min-h-56 flex-1 items-center justify-center px-4 py-8 text-center font-serif text-xs italic tracking-[0.18em]"
@@ -130,7 +130,9 @@ export function TrackEmptyState({ trackTab }: { trackTab: 'canon' | 'custom' }) 
     >
       {trackTab === 'canon'
         ? '暂无原著剧情轨道。点击“恢复内置原著”后会显示内置主线。'
-        : '暂无自制剧情轨道。导入 TXT 或粘贴文本后会显示玩家自制剧情。'}
+        : trackTab === 'worldbook'
+          ? '暂无世界书剧情轨道。内置世界书剧情随客户端预置加载；也可以在剧情面板导入 JSON。'
+          : '暂无自制剧情轨道。导入 TXT 或粘贴文本后会显示玩家自制剧情。'}
     </div>
   );
 }

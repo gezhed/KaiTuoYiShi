@@ -27,6 +27,8 @@ export function buildStoryAdvanceDeclarationContract(system: 剧情编织系统)
   const series = 获取激活剧情系列(normalized);
   const current = series ? getCurrentSegment(series, normalized.当前进度) : undefined;
   if (!series || !series.激活注入 || !current || current.处理状态 !== '已完成') return '';
+  // 独立任务不需要“进入下一分段”的申报；完成当前任务后由玩家手动切段。
+  if (series.剧情分类 && series.剧情分类 !== '主线') return '';
   const keyEvents = current.关键事件.slice(0, 5)
     .map((event) => {
       const results = event.事件结果.filter(Boolean).slice(0, 2).join('；');
@@ -64,10 +66,27 @@ export function autoAlignCanonStoryProgress(params: {
   factEvidence?: string[] | null;
   /** 权威目标的向前窗口（组号跨度）；巡检调用可放宽以追赶漂移，默认 6。 */
   advanceWindow?: number;
+  /** 本回合是否在“手动恢复注入”之后产生了新正文；false 时不消费暂停恢复标记。 */
+  newBodySinceResume?: boolean;
 }): { system: 剧情编织系统; changed: boolean; progressed: boolean } {
-  const normalized = 归一化剧情编织系统(params.storyWeaving);
+  const normalizedInput = 归一化剧情编织系统(params.storyWeaving);
+  const pendingResume = normalizedInput.当前进度?.暂停恢复待判定 === true;
+  if (pendingResume && !params.newBodySinceResume) {
+    return { system: params.storyWeaving, changed: false, progressed: false };
+  }
+  let normalized = normalizedInput;
+  if (pendingResume && normalized.当前进度) {
+    normalized = {
+      ...normalized,
+      当前进度: { ...normalized.当前进度, 暂停恢复待判定: false },
+    };
+  }
   const series = 获取激活剧情系列(normalized);
   if (!series || !series.激活注入) {
+    return { system: params.storyWeaving, changed: false, progressed: false };
+  }
+  // 独立剧情线（支线/同行/常驻/活动/模拟宇宙/续闻）不做自动推进，避免从「钟表把戏：科琳」跳到无关的下一项任务。
+  if (series.剧情分类 && series.剧情分类 !== '主线') {
     return { system: params.storyWeaving, changed: false, progressed: false };
   }
   const segments = [...series.分段列表]
@@ -129,7 +148,7 @@ export function autoAlignCanonStoryProgress(params: {
 
   // 申报/判定是语义推进信号：命中后续分段时直接采信，不再要求关键词字面匹配——玩家以不同路径抵达后续剧情也应被承认。
   const authoritativeTarget = resolveAuthoritativeAdvanceTarget(series, current, params.advanceJudge, params.declaredAdvance, params.advanceWindow);
-  if (authoritativeTarget) {
+  if (authoritativeTarget && authoritativeTarget.运行状态 !== '已经历') {
     const judgeCompleted = Boolean(params.advanceJudge?.completed);
     const declaredCompleted = Boolean(params.declaredAdvance?.completed);
     const completed = judgeCompleted || declaredCompleted
@@ -152,7 +171,7 @@ export function autoAlignCanonStoryProgress(params: {
   }
 
   const candidates = segments.filter((segment) =>
-    segment.组号 >= current.组号 && segment.组号 <= current.组号 + 4 && !['已跳过', '已偏离', '暂停'].includes(segment.运行状态),
+    segment.组号 >= current.组号 && segment.组号 <= current.组号 + 4 && !['已跳过', '已偏离', '暂停', '已经历'].includes(segment.运行状态),
   );
   const scored = candidates
     .map((segment) => ({ segment, score: scoreSegmentPresence(segment, source) }))
@@ -185,7 +204,7 @@ export function autoAlignCanonStoryProgress(params: {
     completionScore,
     evidenceState,
   });
-  if (alignmentDecision.allow && alignmentDecision.target) {
+  if (alignmentDecision.allow && alignmentDecision.target && alignmentDecision.target.segment.运行状态 !== '已经历') {
     const alignedSystem = alignToLaterSegment({
       normalized,
       series,
@@ -251,15 +270,17 @@ export function autoAlignCanonStoryProgress(params: {
   // 引用稳定性契约：诊断没有实际变化时沿用入参引用（投影门禁靠引用相等判断「变没变」）。
   const changed = diagnosticSystem !== normalized;
   return {
-    system: changed ? diagnosticSystem : params.storyWeaving,
-    changed,
+    system: changed ? diagnosticSystem : (pendingResume ? normalized : params.storyWeaving),
+    changed: changed || pendingResume,
     progressed: false,
   };
 }
 
 export function 获取激活剧情系列(system: 剧情编织系统): 剧情编织系列 | undefined {
-  return system.系列列表.find((item) => item.id === system.当前系列ID)
-    ?? system.系列列表.find((item) => item.激活注入);
+  const current = system.系列列表.find((item) => item.id === system.当前系列ID);
+  // 当前系列就是手动暂停的那一条时，不能偷偷回退到别的激活系列继续判定。
+  if (current) return current;
+  return system.系列列表.find((item) => item.激活注入);
 }
 
 function getCurrentSegment(series: 剧情编织系列, anchor?: 剧情编织进度锚点): 剧情编织分段 | undefined {
@@ -277,18 +298,21 @@ function findCrossSeriesCanonAlignment(
   source: string,
 ): { series: 剧情编织系列; segment: 剧情编织分段; reasons: string[] } | null {
   if (activeSeries.来源类型 !== 'canon') return null;
+  if (activeSeries.剧情分类 && activeSeries.剧情分类 !== '主线') return null;
+  const activeSource = activeSeries.剧情来源 ?? '内置原著';
   const activeScore = scoreCanonSeriesPresence(activeSeries, source);
   const candidates = system.系列列表
     .filter((series) =>
       series.id !== activeSeries.id &&
       series.来源类型 === 'canon' &&
+      (series.剧情来源 ?? '内置原著') === activeSource &&
       series.激活注入 &&
       !isSideCanonSeries(series)
     )
     .map((series) => {
       const score = scoreCanonSeriesPresence(series, source);
       const completedSegments = series.分段列表
-        .filter((segment) => segment.启用注入 && segment.处理状态 === '已完成')
+        .filter((segment) => segment.启用注入 && segment.处理状态 === '已完成' && segment.运行状态 !== '已经历')
         .sort((a, b) => a.组号 - b.组号);
       const segmentScores = completedSegments
         .map((segment) => ({ segment, score: scoreSegmentPresence(segment, source) }))
@@ -319,6 +343,7 @@ function findCrossSeriesCanonAlignment(
 }
 
 function isSideCanonSeries(series: 剧情编织系列): boolean {
+  if (series.剧情分类 && series.剧情分类 !== '主线') return true;
   const text = `${series.id}\n${series.标题}\n${series.作品名}`;
   return /(^|_)side_|【支线】|支线/.test(text);
 }
@@ -338,6 +363,7 @@ function switchCanonSeries(params: {
   reasons: string[];
   gateSnapshot?: 剧情编织门禁快照 | null;
 }): 剧情编织系统 {
+  if (params.toCurrent.运行状态 === '已经历') return params.normalized;
   const now = Date.now();
   const nextFromSeries: 剧情编织系列 = {
     ...params.fromSeries,
@@ -394,6 +420,8 @@ function alignToLaterSegment(params: {
   currentArchiveStatus: '已经历' | '已跳过';
   gateSnapshot?: 剧情编织门禁快照 | null;
 }): 剧情编织系统 {
+  // 已经历是玩家/历史锚点，AI 只能向前推进，不能把已经历段重新改回当前或改写归档状态。
+  if (params.target.运行状态 === '已经历') return params.normalized;
   const now = Date.now();
   const skippedSegments = params.series.分段列表
     .filter((segment) =>
@@ -458,6 +486,7 @@ function settleCurrentSegment(params: {
   mode: 'advance' | 'complete';
   gateSnapshot?: 剧情编织门禁快照 | null;
 }): 剧情编织系统 {
+  if (params.current.运行状态 === '已经历') return params.normalized;
   const now = Date.now();
   const { normalized, series, current, next } = params;
   const nextSeries: 剧情编织系列 = {
@@ -638,6 +667,7 @@ function buildProgressAnchor(params: {
     推进证据: [],
     连续推进证据回合: 0,
     卡段回合数: 0,
+    暂停恢复待判定: false,
     updatedAt: Date.now(),
   };
 }

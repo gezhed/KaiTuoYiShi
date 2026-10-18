@@ -1,6 +1,6 @@
 import type { 剧情编织分段, 剧情编织运行状态 } from '@/models/storyWeaving';
 
-export type TrackTab = 'canon' | 'custom';
+export type TrackTab = 'canon' | 'worldbook' | 'custom';
 
 export { cardClip, smallClip } from '@/components/ui/clipPaths';
 

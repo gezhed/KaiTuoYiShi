@@ -39,7 +39,7 @@ export function SegmentDetail({
           <div className="min-w-0">
             <div className="break-words font-serif text-[15px] font-bold md:text-base" style={{ color: 'rgb(var(--tj-accent-primary))' }}>{segment.标题}</div>
             <div className="mt-1 text-xs" style={{ color: 'rgba(var(--tj-text-secondary),0.78)' }}>
-              {series.标题} · {series.来源类型 === 'canon' ? '原著轨道' : '自制轨道'} · {segment.章节范围} · {segment.字数} 字 · {segment.启用注入 ? '参与注入' : '不注入'}
+              {series.标题} · {series.来源类型 === 'canon' ? (series.剧情来源 === '世界书' ? '世界书轨道' : '原著轨道') : '自制轨道'} · {series.剧情分类 ? `${series.剧情分类} · ` : ''}{series.剧情地区 && series.剧情地区 !== '多地区' ? `${series.剧情地区} · ` : ''}{series.剧情版本 ? `v${series.剧情版本} · ` : ''}{segment.章节范围}{segment.剧情地区 && segment.剧情地区 !== series.剧情地区 ? ` · ${segment.剧情地区}` : ''} · {segment.字数} 字 · {segment.启用注入 ? '参与注入' : '不注入'}
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <span className="text-[11px]" style={{ color: 'rgba(var(--tj-text-secondary),0.78)' }}>运行状态</span>
@@ -70,11 +70,16 @@ export function SegmentDetail({
             <button className="panel-btn" disabled={busy} onClick={onSetCurrent}>设为当前</button>
             <button className="panel-btn" onClick={onResetDraft}>还原草稿</button>
             <button className="panel-btn" disabled={busy} onClick={onSaveDraft}>保存修改</button>
-            <button className="panel-btn strong" disabled={busy} onClick={onDecompose}>
-              {busy ? '分解中...' : segment.处理状态 === '已完成' ? '重新分解' : 'AI 分解'}
+            <button className="panel-btn strong" disabled={busy || segment.运行状态 === '已经历'} onClick={onDecompose}>
+              {busy ? '分解中...' : segment.运行状态 === '已经历' ? '已经历（AI 锁定）' : segment.处理状态 === '已完成' ? '重新分解' : 'AI 分解'}
             </button>
           </div>
         </div>
+        {segment.运行状态 === '已经历' && (
+          <div className="mt-2 text-xs leading-relaxed" style={{ color: 'rgba(var(--tj-tech-cyan),0.86)' }}>
+            该分段已标记为「已经历」：AI 推进判定与 AI 分解不会改写它；需要调整请用上方手动编辑并保存。
+          </div>
+        )}
         {segment.最近错误 && <div className="mt-2 text-xs" style={{ color: 'rgba(var(--tj-danger),0.9)' }}>{segment.最近错误}</div>}
       </div>
 

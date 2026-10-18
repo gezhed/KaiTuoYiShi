@@ -4,6 +4,8 @@ export type BatchDecomposeMode = 'pending' | 'fromCurrent' | 'all';
 
 export function selectBatchTargets(series: 剧情编织系列, mode: BatchDecomposeMode): 剧情编织分段[] {
   return series.分段列表.filter((segment) => {
+    // 已经历是历史锚点，AI 不能重新分解覆盖；只能由玩家手动编辑。
+    if (segment.运行状态 === '已经历') return false;
     if (mode === 'pending') return segment.处理状态 !== '已完成';
     if (mode === 'fromCurrent') return segment.组号 >= series.当前分段组号;
     return true;

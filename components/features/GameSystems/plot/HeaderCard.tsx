@@ -41,7 +41,7 @@ export function HeaderCard({
             剧情编织
           </div>
           <div className="mt-1 max-w-2xl text-[12px] leading-relaxed tracking-0" style={{ color: 'rgba(var(--tj-text-secondary),0.82)' }}>
-            导入玩家自定义 TXT，将它拆成章节与分段，再分解为主剧情可读取的滑窗。这里负责章节结构、可见性边界、角色档案、地点档案与承接事实。
+            导入玩家自定义 TXT，或在内置原著 / 世界书 / 自制三条剧情轨道间切换。这里负责章节结构、可见性边界、角色档案、地点档案与承接事实；支线与同行任务按独立单段注入。
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
             <Pill text="TXT 导入" tone="gold" />

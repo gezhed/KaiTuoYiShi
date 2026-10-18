@@ -15,7 +15,8 @@ import { devLog } from '@/utils/devLog';
  * 缺失行为一致）。刻意不 mock 任何 data loader，走真实合并与校验。
  */
 function stubFetchWithRealFiles(): void {
-  vi.stubGlobal('fetch', (input: RequestInfo | URL): Promise<Response> => {
+  const baseFetch = globalThis.fetch;
+  vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const raw = input instanceof Request ? input.url : input.toString();
     const withoutQuery = raw.split('?')[0];
     let pathname: string;
@@ -24,6 +25,8 @@ function stubFetchWithRealFiles(): void {
     } catch {
       return Promise.resolve(new Response('bad url', { status: 400 }));
     }
+    // 存储层已经改走 /api/saves 服务端；测试的内存版由 tests/setup.ts 提供。
+    if (pathname.startsWith('/api/saves/')) return baseFetch(input, init);
     if (pathname.startsWith('/zhiku-presets/')) {
       const filePath = join(process.cwd(), 'public', pathname);
       try {
@@ -69,7 +72,8 @@ describe('真实内置目录加载（生产复现）', () => {
   });
 
   it('原著正文停滞时智库仍可就绪（两路独立）', async () => {
-    vi.stubGlobal('fetch', async (input: RequestInfo | URL): Promise<Response> => {
+    const baseFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const raw = input instanceof Request ? input.url : input.toString();
       const withoutQuery = raw.split('?')[0];
       let pathname: string;
@@ -78,6 +82,7 @@ describe('真实内置目录加载（生产复现）', () => {
       } catch {
         return new Response('bad url', { status: 400 });
       }
+      if (pathname.startsWith('/api/saves/')) return baseFetch(input, init);
       if (pathname.includes('story-weaving-canon')) {
         return new Promise<Response>(() => {});
       }

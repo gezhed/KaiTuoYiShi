@@ -29,8 +29,15 @@ export function SeriesControl({
         <div className="min-w-0">
           <div className="break-words font-serif text-[15px] font-bold md:text-base" style={{ color: 'rgb(var(--tj-accent-primary))' }}>{series.标题}</div>
           <div className="mt-1 text-xs" style={{ color: 'rgba(var(--tj-text-secondary),0.78)' }}>
-            {series.来源类型 === 'canon' ? '原著剧情轨道' : '玩家自制剧情'} · {series.章节列表.length} 章 · {series.分段列表.length} 段 · 已完成 {done} 段 · 每段 {series.每段章数} 章
+            {series.来源类型 === 'canon' ? (series.剧情来源 === '世界书' ? '世界书剧情轨道' : '原著剧情轨道') : '玩家自制剧情'} · {series.章节列表.length} 章 · {series.分段列表.length} 段 · 已完成 {done} 段 · 每段 {series.每段章数} 章
           </div>
+          {(series.剧情分类 || series.剧情地区 || series.剧情版本) && (
+            <div className="mt-1 flex flex-wrap gap-1.5 text-[11px]" style={{ color: 'rgba(var(--tj-tech-cyan),0.82)' }}>
+              {series.剧情分类 && <span>{series.剧情分类}</span>}
+              {series.剧情地区 && series.剧情地区 !== '多地区' && <span>· {series.剧情地区}</span>}
+              {series.剧情版本 && <span>· v{series.剧情版本}</span>}
+            </div>
+          )}
           {series.当前阶段概括 && (
             <div className="mt-2 text-xs leading-relaxed" style={{ color: 'rgba(var(--tj-text-secondary),0.82)' }}>
               {series.当前阶段概括}
@@ -56,7 +63,7 @@ export function SeriesControl({
         </div>
         <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
           <button className="panel-btn" disabled={busy} onClick={onRename}>重命名</button>
-          <button className="panel-btn" disabled={busy} onClick={onToggleInjection}>{series.激活注入 ? '暂停注入' : '启用注入'}</button>
+          <button className="panel-btn" disabled={busy} title="仅手动开关；关闭后不再调用 AI 进行剧情推进判定" onClick={onToggleInjection}>{series.激活注入 ? '暂停注入' : '启用注入'}</button>
           <button className="panel-btn" disabled={busy || series.来源类型 === 'canon'} onClick={onRebuild}>重建分段</button>
           <button className="panel-btn" disabled={busy} onClick={onBatchPending}>分解待处理</button>
           <button className="panel-btn" disabled={busy} onClick={onBatchFromCurrent}>分解当前后续</button>

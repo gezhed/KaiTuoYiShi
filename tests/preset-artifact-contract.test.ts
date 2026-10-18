@@ -5,6 +5,7 @@ import { 构造剧情编织系列, 构造剧情编织系统, 归一化剧情编�
 import type { 剧情编织系列 } from '@/models/storyWeaving';
 import { 构造智库系统, 归一化智库系统 } from '@/models/zhiku';
 import { 装配内置智库条目, bundledZhikuPresets } from '@/data/zhikuPreset';
+import { bundledStoryWeavingPresets } from '@/data/storyWeavingPreset';
 import { STORY_WEAVING_CANON_DIR as CANON_DIR } from './helpers/storyWeavingFixture';
 
 
@@ -35,7 +36,7 @@ function canonical<T>(value: T): T {
 describe('内置 canon 裸产物契约', () => {
   it('每个文件的字段都是运行时消费契约的一部分，且取值合法', async () => {
     const files = await readCanonFiles();
-    expect(files).toHaveLength(27);
+    expect(files).toHaveLength(bundledStoryWeavingPresets.length);
     for (const { id, raw } of files) {
       expect(raw.id, id).toBe(id);
       expect(raw.内置预设ID, id).toBe(id);

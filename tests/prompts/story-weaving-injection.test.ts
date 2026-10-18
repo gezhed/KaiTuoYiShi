@@ -27,4 +27,15 @@ describe('剧情编织注入', () => {
     expect(buildStoryWeavingInjection(createStoryWeavingFixture(), { ...context, currentRegionId: 'herta_space_station' }))
       .toContain('CURRENT_SEGMENT_PAYLOAD');
   });
+
+  it('支线等独立剧情只注入当前段，不带入相邻任务', () => {
+    const { context } = createPromptFixture();
+    const system = createStoryWeavingFixture();
+    system.系列列表[0].剧情分类 = '支线';
+    const prompt = buildStoryWeavingInjection(system, context);
+    expect(prompt).toContain('CURRENT_SEGMENT_PAYLOAD');
+    expect(prompt).not.toContain('PREVIOUS_SEGMENT_PAYLOAD');
+    expect(prompt).not.toContain('NEXT_SEGMENT_PAYLOAD');
+    expect(prompt).not.toContain('# 最近已完成情节一览');
+  });
 });

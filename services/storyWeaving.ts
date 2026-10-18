@@ -25,6 +25,11 @@ const 文本数组 = (value: unknown): string[] => (
 const ACTIVE_RUNTIME_STATUSES = new Set<剧情编织分段['运行状态']>(['当前', '未开始']);
 const ARCHIVED_RUNTIME_STATUSES = new Set<剧情编织分段['运行状态']>(['已经历', '已跳过', '已偏离', '暂停']);
 
+/** 支线/同行/常驻/活动/模拟宇宙/续闻是独立任务，不参与主线滑窗的前后承接。 */
+function isIndependentStorySeries(series: 剧情编织系列): boolean {
+  return Boolean(series.剧情分类 && series.剧情分类 !== '主线');
+}
+
 export function buildStoryWeavingApiConfig(settings: 游戏设置, apiSettings: API设置): API配置项 | null {
   return resolveApiConfig(apiSettings, settings, 'storyWeaving');
 }
@@ -41,6 +46,9 @@ export async function decomposeStorySegment(params: {
   signal?: AbortSignal;
   promptModules?: 提示词模块[];
 }): Promise<剧情编织分段> {
+  if (params.segment.运行状态 === '已经历') {
+    throw new Error('该分段已标记为「已经历」，AI 不会再次修改；如需调整请手动编辑。');
+  }
   const raw = await chatCompletionNonStream(params.config, {
     systemPrompt: buildStoryWeavingSystemPrompt(params.promptModules),
     messages: [{ role: 'user', content: buildStoryWeavingUserPrompt(params) }],
@@ -59,8 +67,12 @@ type StoryWeavingRuntimeContext = Pick<
 export function buildStoryWeavingInjection(system?: 剧情编织系统, ctx?: StoryWeavingRuntimeContext): string {
   const resolved = resolveInjectionWindow(system);
   if (!resolved) return '';
-  const relocated = relocateCurrentSegmentByOpeningArchive(resolved, ctx);
-  const { series, completed, current, archivedAnchor, relocationNote } = relocated;
+  const independent = isIndependentStorySeries(resolved.series);
+  const relocated = independent
+    ? { ...resolved, relocationNote: undefined }
+    : relocateCurrentSegmentByOpeningArchive(resolved, ctx);
+  const { series, completed, current, relocationNote } = relocated;
+  const archivedAnchor = independent ? undefined : relocated.archivedAnchor;
   const continuity = 评估剧情区域连续性({
     currentRegionId: ctx?.currentRegionId,
     currentLocation: ctx?.currentLocation,
@@ -73,26 +85,37 @@ export function buildStoryWeavingInjection(system?: 剧情编织系统, ctx?: St
   }
   const progress = system?.当前进度;
 
-  const previous = archivedAnchor && archivedAnchor.组号 < current.组号
-    ? archivedAnchor
-    : [...completed]
-      .reverse()
-      .find((segment) => segment.组号 < current.组号 && segment.运行状态 === '已经历');
-  const next = completed.find((segment) => segment.组号 > current.组号 && segment.运行状态 === '未开始');
-  const indexSegments = filterMainlineIndexSegments(completed);
-  const stageSummary = series.当前阶段概括 || deriveStageSummary(indexSegments);
-  const coreRoles = series.核心角色.length > 0 ? series.核心角色 : deriveCoreRoles(indexSegments);
-  const locationIndex = series.涉及地点索引.length > 0 ? series.涉及地点索引 : deriveLocations(indexSegments);
-  const factionIndex = series.涉及派系索引.length > 0 ? series.涉及派系索引 : deriveFactions(indexSegments);
+  // 支线/同行/常驻/活动/模拟宇宙/续闻彼此独立：只注入当前单段，不拿相邻任务当“前一段/下一段”。
+  const previous = independent
+    ? undefined
+    : (archivedAnchor && archivedAnchor.组号 < current.组号
+      ? archivedAnchor
+      : [...completed].reverse().find((segment) => segment.组号 < current.组号 && segment.运行状态 === '已经历'));
+  const next = independent ? undefined : completed.find((segment) => segment.组号 > current.组号 && segment.运行状态 === '未开始');
+  const indexSegments = independent ? [current] : filterMainlineIndexSegments(completed);
+  const stageSummary = independent
+    ? (current.本段概括 || current.原文摘要)
+    : (series.当前阶段概括 || deriveStageSummary(indexSegments));
+  const coreRoles = independent
+    ? current.登场角色.slice(0, 8)
+    : (series.核心角色.length > 0 ? series.核心角色 : deriveCoreRoles(indexSegments));
+  const locationIndex = independent
+    ? current.涉及地点.slice(0, 8)
+    : (series.涉及地点索引.length > 0 ? series.涉及地点索引 : deriveLocations(indexSegments));
+  const factionIndex = independent
+    ? current.涉及派系.slice(0, 8)
+    : (series.涉及派系索引.length > 0 ? series.涉及派系索引 : deriveFactions(indexSegments));
   const seriesOverview = [
     '# 系列总览',
     `系列：${series.标题}`,
     `作品：${series.作品名}`,
-    `当前分段：${current.组号}/${completed[completed.length - 1]?.组号 || current.组号}`,
+    `当前分段：${current.组号}/${independent ? current.组号 : (completed[completed.length - 1]?.组号 || current.组号)}`,
     progress ? `进度参考：${progress.推进状态}，最近判定回合 ${progress.最近一次推进判定回合 ?? '未记录'}` : '',
     `调用参考资料：${series.激活注入 ? '是' : '否'}`,
   ].filter(Boolean).join('\n');
-  const recentIndexBlock = buildRecentSegmentIndex(indexSegments, indexSegments.findIndex((segment) => segment.id === current.id));
+  const recentIndexBlock = independent
+    ? ''
+    : buildRecentSegmentIndex(indexSegments, indexSegments.findIndex((segment) => segment.id === current.id));
   const gate = evaluateSegmentGate(current, ctx);
   const progressBlock = formatProgressAnchor(progress);
 
@@ -164,7 +187,9 @@ export function evaluateStoryWeavingGate(
 ): 剧情编织门禁快照 | null {
   const resolved = resolveInjectionWindow(system);
   if (!resolved) return null;
-  const relocated = relocateCurrentSegmentByOpeningArchive(resolved, ctx);
+  const relocated = isIndependentStorySeries(resolved.series)
+    ? { ...resolved, relocationNote: undefined }
+    : relocateCurrentSegmentByOpeningArchive(resolved, ctx);
   const gate = evaluateSegmentGate(relocated.current, ctx);
   return {
     系列ID: relocated.series.id,
@@ -178,19 +203,25 @@ export function evaluateStoryWeavingGate(
 export function getStoryWeavingInjectionDiagnostics(system?: 剧情编织系统): 剧情编织注入诊断 | null {
   const resolved = resolveInjectionWindow(system);
   if (!resolved) return null;
-  const { series, completed, current, archivedAnchor } = resolved;
-  const previous = archivedAnchor && archivedAnchor.组号 < current.组号
-    ? archivedAnchor
-    : [...completed]
-      .reverse()
-      .find((segment) => segment.组号 < current.组号 && segment.运行状态 === '已经历');
-  const next = completed.find((segment) => segment.组号 > current.组号 && segment.运行状态 === '未开始');
+  const { series, completed, current } = resolved;
+  const independent = isIndependentStorySeries(series);
+  const archivedAnchor = independent ? undefined : resolved.archivedAnchor;
+  const previous = independent
+    ? undefined
+    : (archivedAnchor && archivedAnchor.组号 < current.组号
+      ? archivedAnchor
+      : [...completed]
+        .reverse()
+        .find((segment) => segment.组号 < current.组号 && segment.运行状态 === '已经历'));
+  const next = independent
+    ? undefined
+    : completed.find((segment) => segment.组号 > current.组号 && segment.运行状态 === '未开始');
   const health = evaluateInjectionHealth(current, archivedAnchor);
   return {
     系列ID: series.id,
     系列标题: series.标题,
     健康状态: health.status,
-    检查项: health.items,
+    检查项: independent ? [...health.items, '独立剧情：只注入当前单段，不启用前后滑窗。'] : health.items,
     当前分段ID: current.id,
     当前分段组号: current.组号,
     当前分段标题: current.标题,
@@ -200,7 +231,7 @@ export function getStoryWeavingInjectionDiagnostics(system?: 剧情编织系统)
     归档锚点标题: archivedAnchor?.标题,
     前一分段标题: previous?.标题,
     下一分段标题: next?.标题,
-    可注入分段数: completed.length,
+    可注入分段数: independent ? 1 : completed.length,
   };
 }
 

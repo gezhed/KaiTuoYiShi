@@ -4,6 +4,9 @@ export type 剧情编织分段状态 = '待处理' | '处理中' | '已完成' |
 export type 剧情编织运行状态 = '未开始' | '当前' | '已经历' | '已跳过' | '已偏离' | '暂停';
 export type 剧情编织来源类型 = 'canon' | 'custom';
 export type 剧情编织推进状态 = '未开始' | '推进中' | '已完成' | '已偏离' | '暂停';
+export type 剧情编织分类 = '主线' | '支线' | '同行' | '常驻' | '活动' | '模拟宇宙' | '续闻' | '其他';
+/** 轨道资料源：区分内置原著、世界书导入与玩家自制。旧档缺省时按来源类型推断。 */
+export type 剧情编织资料源 = '内置原著' | '世界书' | '自制';
 
 export interface 剧情编织可见性 {
   谁知道: string[];
@@ -117,6 +120,10 @@ export interface 剧情编织分段 {
   运行状态: 剧情编织运行状态;
   最近错误?: string;
   updatedAt: number;
+  /** 世界书/多轨剧情用的可选检索维度；旧档没有这些字段时按系列继承。 */
+  剧情分类?: 剧情编织分类;
+  剧情地区?: string;
+  剧情版本?: string;
 }
 
 export interface 剧情编织系列 {
@@ -141,6 +148,12 @@ export interface 剧情编织系列 {
   涉及派系索引: string[];
   createdAt: number;
   updatedAt: number;
+  /** 剧情库分轨与检索维度；世界书轨道用「剧情来源: 世界书」标记。 */
+  剧情分类?: 剧情编织分类;
+  剧情地区?: string;
+  剧情版本?: string;
+  剧情排序?: number;
+  剧情来源?: 剧情编织资料源;
 }
 
 export interface 剧情编织进度锚点 {
@@ -158,6 +171,8 @@ export interface 剧情编织进度锚点 {
   推进证据?: string[];
   连续推进证据回合?: number;
   卡段回合数?: number;
+  /** 手动恢复注入后等待下一段新正文再判定；暂停期间不调用 AI 推进判定。 */
+  暂停恢复待判定?: boolean;
   updatedAt: number;
 }
 
@@ -397,20 +412,29 @@ const 归一化地点档案 = (raw: Partial<剧情编织地点档案>): 剧情�
 });
 
 const 聚合剧情编织系列信息 = (series: 剧情编织系列): 剧情编织系列 => {
-  const completed = series.分段列表.filter((segment) => segment.处理状态 === '已完成' && segment.启用注入);
+  // 只聚合当前进度之前的段：大系列（世界书支线可达上百段）不能在开局就把后期角色与地点算进索引。
+  // 支线/同行等独立任务更严格：只按当前单段聚合，避免把上一项任务的档案带进当前任务。
+  const anchorGroup = Math.max(1, series.当前分段组号 || 1);
+  const independent = Boolean(series.剧情分类 && series.剧情分类 !== '主线');
+  const visibleSegments = series.分段列表.filter((segment) => (
+    independent ? segment.组号 === anchorGroup : segment.组号 <= anchorGroup
+  ));
+  const currentSegment = series.分段列表.find((segment) => segment.组号 === anchorGroup);
+  const completed = visibleSegments.filter((segment) => segment.处理状态 === '已完成' && segment.启用注入);
   const mainlineCompleted = completed.filter((segment) => !['已跳过', '已偏离', '暂停'].includes(segment.运行状态));
   const indexSource = mainlineCompleted.length ? mainlineCompleted : completed;
-  const recent = indexSource.slice(-3);
+  const indexSegments = indexSource.length ? indexSource : (currentSegment ? [currentSegment] : []);
+  const recent = indexSource.length ? indexSource.slice(-3) : (currentSegment ? [currentSegment] : []);
   const 当前阶段概括 = recent.length
     ? 去重文本列表(recent.flatMap((segment) => [segment.本段概括 || segment.原文摘要 || segment.标题]), 3).join('；')
     : '';
   const 核心角色统计 = new Map<string, number>();
   const 涉及地点统计 = new Map<string, number>();
   const 涉及派系统计 = new Map<string, number>();
-  indexSource.forEach((segment) => {
-    去重文本列表(segment.登场角色, 30).forEach((item) => 核心角色统计.set(item, (核心角色统计.get(item) || 0) + 1));
-    去重文本列表(segment.涉及地点, 30).forEach((item) => 涉及地点统计.set(item, (涉及地点统计.get(item) || 0) + 1));
-    去重文本列表(segment.涉及派系, 30).forEach((item) => 涉及派系统计.set(item, (涉及派系统计.get(item) || 0) + 1));
+  indexSegments.forEach((segment) => {
+    去重文本列表(Array.isArray(segment.登场角色) ? segment.登场角色 : [], 30).forEach((item) => 核心角色统计.set(item, (核心角色统计.get(item) || 0) + 1));
+    去重文本列表(Array.isArray(segment.涉及地点) ? segment.涉及地点 : [], 30).forEach((item) => 涉及地点统计.set(item, (涉及地点统计.get(item) || 0) + 1));
+    去重文本列表(Array.isArray(segment.涉及派系) ? segment.涉及派系 : [], 30).forEach((item) => 涉及派系统计.set(item, (涉及派系统计.get(item) || 0) + 1));
   });
   const 核心角色 = Array.from(核心角色统计.entries())
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-Hans-CN'))
@@ -463,6 +487,17 @@ function 归一化推进状态(value: unknown): 剧情编织推进状态 {
 
 function 归一化来源类型(value: unknown): 剧情编织来源类型 {
   return value === 'canon' ? 'canon' : 'custom';
+}
+
+const 剧情分类列表: 剧情编织分类[] = ['主线', '支线', '同行', '常驻', '活动', '模拟宇宙', '续闻', '其他'];
+
+function 归一化剧情分类(value: unknown): 剧情编织分类 | undefined {
+  return 剧情分类列表.includes(value as 剧情编织分类) ? value as 剧情编织分类 : undefined;
+}
+
+function 归一化剧情资料源(value: unknown, fallback: 剧情编织来源类型): 剧情编织资料源 {
+  if (value === '世界书' || value === '内置原著' || value === '自制') return value;
+  return fallback === 'canon' ? '内置原著' : '自制';
 }
 
 export function 创建空剧情编织系统(): 剧情编织系统 {
@@ -552,7 +587,11 @@ export function 构造剧情编织系统(input: {
 }
 
 export function 构造剧情编织系列(raw: 剧情编织系列): 剧情编织系列 {
-  return 聚合剧情编织系列信息(raw);
+  return 聚合剧情编织系列信息({
+    ...raw,
+    // 可信构造也要补上资料源默认值，保证与归一化结果一致；否则内置旧档会在边界比较里多出一个字段。
+    剧情来源: 归一化剧情资料源(raw.剧情来源, raw.来源类型 === 'canon' ? 'canon' : 'custom'),
+  });
 }
 
 export function 归一化剧情编织进度锚点(
@@ -599,6 +638,7 @@ export function 归一化剧情编织进度锚点(
     推进证据: 去重文本列表(文本列表(raw?.推进证据), 8),
     连续推进证据回合: Math.max(0, Math.trunc(Number(raw?.连续推进证据回合) || 0)),
     卡段回合数: Math.max(0, Math.trunc(Number(raw?.卡段回合数) || 0)),
+    暂停恢复待判定: raw?.暂停恢复待判定 === true,
     updatedAt: Number(raw?.updatedAt) || Date.now(),
   };
 }
@@ -661,12 +701,13 @@ export function 归一化剧情编织系列(raw: Partial<剧情编织系列>): �
       ? { ...segment, 运行状态: '当前' as const }
       : segment;
   });
+  const 来源类型 = 归一化来源类型(raw.来源类型);
   const 系列 = {
     id,
     标题: 读文本(raw.标题).trim() || 读文本(raw.作品名).trim() || '未命名剧情',
     作品名: 读文本(raw.作品名).trim() || 读文本(raw.标题).trim() || '未命名作品',
     区域ID: 读文本(raw.区域ID).trim() || undefined,
-    来源类型: 归一化来源类型(raw.来源类型),
+    来源类型,
     来源智库条目ID: 去重文本列表(文本列表(raw.来源智库条目ID), 80),
     内置预设ID: 读文本(raw.内置预设ID).trim() || undefined,
     来源文件名: 读文本(raw.来源文件名).trim() || undefined,
@@ -683,6 +724,11 @@ export function 归一化剧情编织系列(raw: Partial<剧情编织系列>): �
     涉及派系索引: 去重文本列表(文本列表(raw.涉及派系索引), 12),
     createdAt: Number(raw.createdAt) || now,
     updatedAt: Number(raw.updatedAt) || now,
+    剧情分类: 归一化剧情分类(raw.剧情分类),
+    剧情地区: 读文本(raw.剧情地区).trim() || undefined,
+    剧情版本: 读文本(raw.剧情版本).trim() || undefined,
+    剧情排序: Number.isFinite(Number(raw.剧情排序)) ? Math.trunc(Number(raw.剧情排序)) : undefined,
+    剧情来源: 归一化剧情资料源(raw.剧情来源, 来源类型),
   };
   return 聚合剧情编织系列信息(系列);
 }
@@ -735,6 +781,9 @@ export function 归一化剧情编织分段(raw: Partial<剧情编织分段>, in
     运行状态: 归一化运行状态(raw.运行状态),
     最近错误: 读文本(raw.最近错误).trim() || undefined,
     updatedAt: Number(raw.updatedAt) || Date.now(),
+    剧情分类: 归一化剧情分类(raw.剧情分类),
+    剧情地区: 读文本(raw.剧情地区).trim() || undefined,
+    剧情版本: 读文本(raw.剧情版本).trim() || undefined,
   };
   return 分段;
 }

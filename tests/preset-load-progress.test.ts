@@ -21,7 +21,7 @@ describe('预置载入进度：失败也必须走到总数', () => {
     vi.unstubAllGlobals();
   });
 
-  it('原著正文：27 个文件全部计入进度，然后才抛完整性错误', async () => {
+  it('原著正文：全部内置文件计入进度，然后才抛完整性错误', async () => {
     const calls: ProgressCall[] = [];
     await expect(
       loadAllBundledStoryWeavingPresets((done, total) => { calls.push([done, total]); }),

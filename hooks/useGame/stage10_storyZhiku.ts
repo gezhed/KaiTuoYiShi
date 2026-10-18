@@ -60,7 +60,10 @@ export async function stage10_storyZhiku(
 
   let advanceJudge: StoryAdvanceJudgement | null = null;
   let advanceWindow: number | undefined;
-  if ((isSweepTurn || storySettings.剧情推进AI判定) && !skipStoryAlignment && !continuity.hold) {
+  const activeStoryLine = 获取激活剧情系列(state.剧情编织);
+  const independentStoryLine = Boolean(activeStoryLine?.剧情分类 && activeStoryLine.剧情分类 !== '主线');
+  const storyInjectionPaused = !storySettings.enabled || !activeStoryLine?.激活注入;
+  if (!independentStoryLine && !storyInjectionPaused && (isSweepTurn || storySettings.剧情推进AI判定) && !skipStoryAlignment && !continuity.hold) {
     const judgeSegment = 获取当前剧情分段(state.剧情编织);
     const judgeConfig = judgeSegment
       ? buildStoryAdvanceJudgeApiConfig(state.deviceSettings.gameSettings, state.deviceSettings.apiSettings)
@@ -113,6 +116,7 @@ export async function stage10_storyZhiku(
         declaredAdvance,
         factEvidence: d.worldFactEvidence,
         advanceWindow,
+        newBodySinceResume: true,
       });
   const storyProgressMemoryLine = storyAlignment.progressed
     ? buildStoryProgressMemoryLine(state.剧情编织, storyAlignment.system)

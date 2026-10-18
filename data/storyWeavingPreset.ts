@@ -3,7 +3,7 @@ import { 构造剧情编织系列, 构造剧情编织系统, 归一化剧情编�
 import type { 开局档案 } from '@/models/world';
 import { loadAllOrThrow, type ResourceProgress } from '@/data/resourceBundle';
 
-export const bundledStoryWeavingPresets: BundledStoryWeavingPreset[] = [
+const legacyStoryWeavingPresets: BundledStoryWeavingPreset[] = [
   {
     id: 'story_canon_zhiku_herta_station_chapter1',
     title: '黑塔空间站-今天是昨天的明天',
@@ -270,6 +270,188 @@ export interface BundledStoryWeavingPreset {
   description: string;
   zhikuPresetId: string;
 }
+
+const WORLDBOOK_STORY_WEAVING_PRESETS: BundledStoryWeavingPreset[] = [
+  {
+    "id": "wb_main_herta",
+    "title": "【主线·黑塔空间站】今天是昨天的明天",
+    "description": "已解析世界书剧情：主线·黑塔空间站 1.0，2 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_jarilo",
+    "title": "【主线·雅利洛-VI】于枯索的冬夜里",
+    "description": "已解析世界书剧情：主线·雅利洛-VI 1.0，3 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_luofu_travel",
+    "title": "【主线·仙舟罗浮】乘槎驭风仙窟游",
+    "description": "已解析世界书剧情：主线·仙舟罗浮 1.0，9 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_luofu_end",
+    "title": "【主线·仙舟罗浮】云树百丈蔽重楼·劫波渡尽战云收",
+    "description": "已解析世界书剧情：主线·仙舟罗浮 1.2-1.3，2 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_penacony_1",
+    "title": "【主线·匹诺康尼】喧哗与骚动",
+    "description": "已解析世界书剧情：主线·匹诺康尼 2.0，2 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_penacony_2",
+    "title": "【主线·匹诺康尼】鸽群中的猫",
+    "description": "已解析世界书剧情：主线·匹诺康尼 2.1，9 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_penacony_3",
+    "title": "【主线·匹诺康尼】在我们的时代里",
+    "description": "已解析世界书剧情：主线·匹诺康尼 2.2，9 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_penacony_4",
+    "title": "【主线·匹诺康尼】再见，匹诺康尼",
+    "description": "已解析世界书剧情：主线·匹诺康尼 2.3，7 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_penacony_5",
+    "title": "【主线·匹诺康尼】在第八日启程",
+    "description": "已解析世界书剧情：主线·匹诺康尼 2.7，1 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_amphoreus_1",
+    "title": "【主线·翁法罗斯 3.0】落木逐火英雄纪",
+    "description": "已解析世界书剧情：主线·翁法罗斯 3.0，3 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_amphoreus_2",
+    "title": "【主线·翁法罗斯 3.1】门扉之启，王座之终",
+    "description": "已解析世界书剧情：主线·翁法罗斯 3.1，5 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_amphoreus_3",
+    "title": "【主线·翁法罗斯 3.2】走过安眠地的花丛",
+    "description": "已解析世界书剧情：主线·翁法罗斯 3.2，3 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_amphoreus_4",
+    "title": "【主线·翁法罗斯 3.3】在黎明升起时坠落",
+    "description": "已解析世界书剧情：主线·翁法罗斯 3.3，8 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_amphoreus_5",
+    "title": "【主线·翁法罗斯 3.4】因为太阳将要毁伤",
+    "description": "已解析世界书剧情：主线·翁法罗斯 3.4，5 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_amphoreus_6",
+    "title": "【主线·翁法罗斯 3.5】英雄未死之前",
+    "description": "已解析世界书剧情：主线·翁法罗斯 3.5，6 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_amphoreus_7",
+    "title": "【主线·翁法罗斯 3.6】于长夜重返大地",
+    "description": "已解析世界书剧情：主线·翁法罗斯 3.6，8 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_amphoreus_8",
+    "title": "【主线·翁法罗斯 3.7】成为昨日的明天",
+    "description": "已解析世界书剧情：主线·翁法罗斯 3.7，4 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_amphoreus_9",
+    "title": "【主线·翁法罗斯 3.8】记忆是梦的开场白",
+    "description": "已解析世界书剧情：主线·翁法罗斯 3.8，2 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_erxiang_1",
+    "title": "【主线·二相乐园 4.0】满月是神不在的时间",
+    "description": "已解析世界书剧情：主线·二相乐园 4.0，2 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_erxiang_2",
+    "title": "【主线·二相乐园 4.1】献给破晓的失控",
+    "description": "已解析世界书剧情：主线·二相乐园 4.1，2 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_erxiang_3",
+    "title": "【主线·二相乐园 4.2】如是，众生欢笑不已",
+    "description": "已解析世界书剧情：主线·二相乐园 4.2，2 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_erxiang_4",
+    "title": "【主线·二相乐园 4.3-4.4】沉于生者的忘川·鸣笛于归寂之时",
+    "description": "已解析世界书剧情：主线·二相乐园 4.3-4.4，2 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_main_qianxing_1",
+    "title": "【主线·千星城 4.5-4.6】挥掷千星的筹码·月升之前，与兽共舞",
+    "description": "已解析世界书剧情：主线·千星城 4.5-4.6，2 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_side_world",
+    "title": "【支线合集】世界任务",
+    "description": "已解析世界书剧情：支线，160 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_side_companion",
+    "title": "【同行合集】角色同行",
+    "description": "已解析世界书剧情：同行，23 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_side_resident",
+    "title": "【常驻合集】常驻任务",
+    "description": "已解析世界书剧情：常驻，21 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_side_sequel",
+    "title": "【续闻合集】版本续闻",
+    "description": "已解析世界书剧情：续闻，18 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_side_sim",
+    "title": "【模拟宇宙】宇宙模拟与差分宇宙",
+    "description": "已解析世界书剧情：模拟宇宙 1.0，10 段。",
+    "zhikuPresetId": ""
+  },
+  {
+    "id": "wb_side_event",
+    "title": "【活动合集】版本活动",
+    "description": "已解析世界书剧情：活动，2 段。",
+    "zhikuPresetId": ""
+  }
+];
+
+export const bundledStoryWeavingPresets: BundledStoryWeavingPreset[] = [
+  ...legacyStoryWeavingPresets,
+  ...WORLDBOOK_STORY_WEAVING_PRESETS,
+];
 
 export function getOpeningStoryWeavingAnchor(chapterId?: string): { seriesId: string; segmentGroup: number; note: string } | undefined {
   const id = chapterId?.trim();

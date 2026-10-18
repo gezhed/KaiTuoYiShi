@@ -59,6 +59,7 @@ export function buildManualProgressAnchor(
     最近门禁结果: previous?.最近门禁结果,
     最近判定理由: ['手动修正剧情编织进度'],
     最近一次推进判定回合: previous?.最近一次推进判定回合,
+    暂停恢复待判定: false,
     updatedAt: Date.now(),
   };
 }
