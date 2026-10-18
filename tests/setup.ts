@@ -28,7 +28,9 @@ function keyOf(name: string, row: unknown): string | null {
   const keyPath = STORE_KEYS[name];
   if (!keyPath) return null;
   const value = (row as Record<string, unknown>)[keyPath];
-  return value === undefined || value === null ? null : String(value);
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  return null;
 }
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -44,13 +46,14 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promis
   try {
     url = new URL(raw, 'http://local.test');
   } catch {
-    return realFetch(input as RequestInfo, init);
+    return realFetch(input, init);
   }
-  if (!url.pathname.startsWith('/api/saves/')) return realFetch(input as RequestInfo, init);
+  if (!url.pathname.startsWith('/api/saves/')) return realFetch(input, init);
 
   const rest = url.pathname.slice('/api/saves/'.length);
   if (rest === 'mutate' && (init?.method ?? 'GET').toUpperCase() === 'POST') {
-    const body = JSON.parse(String(init?.body ?? '{}')) as {
+    const rawBody = typeof init?.body === 'string' ? init.body : '{}';
+    const body = JSON.parse(rawBody) as {
       puts?: Record<string, unknown[]>;
       deletes?: Record<string, string[]>;
       clears?: string[];
@@ -65,7 +68,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promis
     }
     for (const [name, keys] of Object.entries(body.deletes ?? {})) {
       const store = storeOf(name);
-      for (const key of keys) store.delete(String(key));
+      for (const key of keys) store.delete(key);
     }
     return json({ ok: true, updatedAt: Date.now() });
   }
@@ -95,7 +98,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promis
   }
 
   return json({ ok: true });
-}) as typeof fetch;
+});
 
 vi.mock('@/utils/devLog', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/utils/devLog')>();
