@@ -54,6 +54,8 @@ export interface 插图流水线依赖 {
     锚点索引: number;
     宽度: number;
     高度: number;
+    /** 来源消息；相册条目带上 targetId，消息插图丢失时可回退显示。 */
+    消息Id?: string;
     signal?: AbortSignal;
   }) => Promise<{ 数据地址?: string } | void>;
   /** 把锚点行文本解析成 `{ 行列表, 全文 }`；默认按换行切分。 */
@@ -344,6 +346,7 @@ export async function 生成正文插图(参数: 生成正文插图参数): Prom
           锚点索引: 锚点.锚点索引,
           宽度: 出图.宽度,
           高度: 出图.高度,
+          消息Id,
           signal,
         });
         if (归档结果?.数据地址) 完成.dataUrl = 归档结果.数据地址;
@@ -369,6 +372,8 @@ export async function 生成正文插图(参数: 生成正文插图参数): Prom
 /** 重生成单张插图：用编辑后的提示词覆盖并重出这一张。 */
 export async function 重生成单张插图(参数: {
   插图: 叙事插图;
+  /** 来源消息；用于相册 targetId 回退。 */
+  消息Id?: string;
   /** 用户在编辑框里改过的纯提示词文本；不传则沿用原标记。 */
   新提示词正文?: string;
   /** 用户在尺寸选择器里指定的尺寸，优先于提示词里的 `WxH`。 */
@@ -410,6 +415,7 @@ export async function 重生成单张插图(参数: {
         锚点索引: -1,
         宽度: 出图.宽度,
         高度: 出图.高度,
+        消息Id: 参数.消息Id,
         signal,
       });
       if (归档结果?.数据地址) 完成.dataUrl = 归档结果.数据地址;

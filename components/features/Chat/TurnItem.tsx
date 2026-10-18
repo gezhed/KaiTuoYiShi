@@ -9,6 +9,7 @@ import { getPath } from '@/data/journeyPresets';
 import { 分类命途狭间回合, 判定评判是否升阶 } from '@/utils/awakening';
 import { 格式化请求上下文 } from '@/utils/debugContextFormat';
 import { 剥掉内联插图 } from '@/utils/illustrationMarkup';
+import { 解析相册资源引用 } from '@/utils/albumActions';
 import { UserTurnBubble } from './userTurnBubble';
 import { AwakeningOracleBlock, AwakeningQuestionsBlock, AwakeningJudgementBadge, AwakeningAftermathLine } from './awakeningBlocks';
 import { EditBodyPanel, PanelText, ToolButton, TurnBadge } from './turnToolbar';
@@ -160,7 +161,39 @@ function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEd
    * 判定用「锚点非空」而不是「已匹配到某一行」：匹配在 BodyBlock 内部进行，
    * 这里若也判一次就会两处逻辑分叉。
    */
-  const 全部插图 = message.narrativeImages ?? [];
+  const 相册回退插图 = useMemo<叙事插图[]>(() => {
+    const 消息插图 = message.narrativeImages ?? [];
+    // 消息里已经有可解析的插图就不抢渲染；只有整条消息都解析不出来时才回退相册。
+    if (消息插图.length > 0 && 消息插图.some((插图) => 解析相册资源引用(album, 插图.dataUrl))) return [];
+    const 条目 = (album?.entries ?? []).filter((entry) => (
+      entry.targetId === message.id
+      && (entry.targetType === 'scene' || entry.slot === 'scene')
+      && Boolean(album?.assets.some((asset) => asset.id === entry.assetId))
+    ));
+    return [...条目].reverse().map((entry) => {
+      const asset = album?.assets.find((item) => item.id === entry.assetId);
+      return {
+        id: `album_fallback_${entry.id}`,
+        dataUrl: `asset:${entry.assetId}`,
+        type: 'scene' as const,
+        kind: 'snapshot' as const,
+        prompt: asset?.finalPrompt || asset?.prompt || '',
+        negativePrompt: asset?.finalNegativePrompt || asset?.negativePrompt,
+        // 没有可信锚点时放到正文末尾兜底卡片，避免伪锚点把图吞掉。
+        description: '',
+        status: 'done' as const,
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [album, message.id, message.narrativeImages]);
+
+  const 全部插图 = useMemo(() => {
+    const 消息插图 = message.narrativeImages ?? [];
+    if (消息插图.length === 0) return 相册回退插图;
+    if (消息插图.some((插图) => 解析相册资源引用(album, 插图.dataUrl))) return 消息插图;
+    return 相册回退插图.length > 0 ? 相册回退插图 : 消息插图;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [album, message.narrativeImages, 相册回退插图]);
   const 已有锚点 = 全部插图.filter((插图) => (插图.description ?? '').trim().length > 0);
   const 未落位插图 = 全部插图.filter((插图) => !(插图.description ?? '').trim());
 

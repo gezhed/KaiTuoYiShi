@@ -1062,7 +1062,7 @@ export function useGame(): UseGameReturn {
     });
     try {
       devLog('net', 'illustration-regenerate-start', { id: 插图.id });
-      const 结果 = await 重生成消息单张插图(stateRef.current, 插图, options);
+      const 结果 = await 重生成消息单张插图(stateRef.current, 插图, options, messageId);
       const 下一份历史 = stateRef.current.chatHistory.map((项) => (
         项.id === messageId
           ? { ...项, narrativeImages: (项.narrativeImages ?? []).map((候选) => (候选.id === 插图.id ? 结果.插图 : 候选)) }
@@ -1293,7 +1293,7 @@ export function useGame(): UseGameReturn {
             error: '自动重画未返回结果。',
           };
       });
-      const 下一份历史 = stateRef.current.chatHistory.map((项) => (
+      const 合并结果到历史 = (历史: 聊天消息[]) => 历史.map((项) => (
         项.id === messageId
           ? {
             ...项,
@@ -1302,8 +1302,10 @@ export function useGame(): UseGameReturn {
           }
           : 项
       ));
+      // 用函数式更新落到 React 的最新历史上；直接传旧快照会被并发的回合写回覆盖。
+      stateRef.current.setChatHistory(合并结果到历史);
+      const 下一份历史 = 合并结果到历史(stateRef.current.chatHistory);
       stateRef.current.set相册(结果.相册);
-      stateRef.current.setChatHistory(下一份历史);
       const 落盘 = await 保存插图结果(stateRef.current, 下一份历史, 结果.相册, 结果.新增条目);
       const 成功数 = 结果.插图.filter((插图) => 插图.status === 'done').length;
       pushQueueTask(
