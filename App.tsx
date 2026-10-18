@@ -418,6 +418,10 @@ export function App() {
         turnActionContext={turnActionContext}
         narrativeImageManualEnabled={narrativeImageManualEnabled}
         插图显示={插图显示}
+        插图缓存自动重画={gameSettings.文生图系统.正文配图.缓存丢失自动重画}
+        onIllustrationRepairMissing={(messageId, 插图) => {
+          void actions.handleRepairIllustrationCache(messageId, 插图).catch(() => undefined);
+        }}
         逐句推进={逐句推进}
         onEditBody={handleEditBody}
         devMode={gameSettings.devMode}

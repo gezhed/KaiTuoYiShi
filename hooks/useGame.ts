@@ -143,6 +143,11 @@ export interface UseGameReturn {
       messageId: string,
       options?: { signal?: AbortSignal },
     ) => Promise<import('@/models/chat').叙事插图[]>;
+    handleRepairIllustrationCache: (
+      messageId: string,
+      缺失插图: import('@/models/chat').叙事插图[],
+      options?: { signal?: AbortSignal },
+    ) => Promise<import('@/models/chat').叙事插图[]>;
   };
   canRerollWithTree: boolean;
   rerollParentStatus: 'pending' | 'valid' | 'invalid';
@@ -1097,7 +1102,7 @@ export function useGame(): UseGameReturn {
   }, []);
 
   /**
-   * 只重跑本回合的插图提示词（保留已出好的图），用于「对提示词不满意重新生成」。
+   * 重跑本回合的插图提示词，并自动用新提示词重出图，用于「换提示词」。
    *
    * 与 `handleGenerateIllustrations` 的区别：这里**不**重新解析正文锚点，
    * 沿用已有插图的锚点与次序，只替换提示词文本，因此不会打乱图与正文的对应关系。
@@ -1115,7 +1120,7 @@ export function useGame(): UseGameReturn {
     // 用户看到的就是「按下去没用」（实际反馈过）。它同时驱动卡片的运行态文案。
     const 回合 = Number(消息.gameTime) || stateRef.current.turnCount;
     pushQueueTask(stateRef.current, 'narrative_image_parse', 'pending', {
-      detail: '正在重跑插图提示词（保留已有图片）…',
+      detail: '正在重写插图提示词，随后自动重出图…',
       turn: 回合,
       targetMessageId: messageId,
     });
@@ -1128,25 +1133,66 @@ export function useGame(): UseGameReturn {
         已有,
         { 只重新生成提示词: true, signal: options?.signal },
       );
-      // 新提示词逐张并回旧插图：只换提示词，保留原图与锚点。
+      // 新提示词逐张并回旧插图：保留原图与锚点。
       const 合并后 = 合并重跑提示词(已有, 结果.插图);
-      const 下一份历史 = stateRef.current.chatHistory.map((项) => (
+      const 提示词历史 = stateRef.current.chatHistory.map((项) => (
         项.id === messageId ? { ...项, narrativeImages: 合并后 } : 项
       ));
-      stateRef.current.setChatHistory(下一份历史);
-      const 落盘 = await 保存插图结果(stateRef.current, 下一份历史, stateRef.current.相册, 结果.新增条目);
-      // 提示词是否真的换了，要能被确认：卡片上不再显示提示词，所以这里报出来。
+      stateRef.current.setChatHistory(提示词历史);
+      const 提示词落盘 = await 保存插图结果(stateRef.current, 提示词历史, stateRef.current.相册, 结果.新增条目);
       const 变化数 = 合并后.filter((项, 序号) => 项.prompt !== 已有[序号]?.prompt).length;
+
+      // 换了提示词就自动重出图；不再停在“只换词、图还是旧的”的半截状态。
+      if (变化数 > 0) {
+        pushQueueTask(stateRef.current, 'narrative_image_generate', 'pending', {
+          detail: `提示词已重写（${变化数} 张），正在自动重出图…`,
+          turn: 回合,
+          targetMessageId: messageId,
+          阶段: '出图中',
+        });
+        const 出图结果 = await 生成消息插图(
+          stateRef.current,
+          messageId,
+          正文,
+          合并后,
+          {
+            signal: options?.signal,
+            on进度: (事件) => {
+              if (事件.阶段 !== '出图' || (事件.完成数 ?? 0) > 0) return;
+              pushQueueTask(stateRef.current, 'narrative_image_generate', 'pending', {
+                detail: `正在自动重出 ${事件.总数 ?? 0} 张图…`,
+                turn: 回合,
+                targetMessageId: messageId,
+                阶段: '出图中',
+              });
+            },
+          },
+        );
+        const 出图历史 = stateRef.current.chatHistory.map((项) => (
+          项.id === messageId ? { ...项, narrativeImages: 出图结果.插图 } : 项
+        ));
+        stateRef.current.set相册(出图结果.相册);
+        stateRef.current.setChatHistory(出图历史);
+        const 出图落盘 = await 保存插图结果(stateRef.current, 出图历史, 出图结果.相册, 出图结果.新增条目);
+        pushQueueTask(stateRef.current, 'narrative_image_parse', 'success', {
+          detail: `已重写 ${变化数}/${合并后.length} 张提示词，并自动重出 ${出图结果.成功数}/${出图结果.插图.length} 张。`
+            + `落盘：${出图落盘.回读确认数}/${出图落盘.资产数} 张`,
+          rawText: 结果.原始回复,
+          turn: 回合,
+          targetMessageId: messageId,
+        });
+        devLog('net', 'illustration-prompts-reroll-done', { messageId, 图数: 合并后.length, 变化数, 重出: 出图结果.成功数 });
+        return 出图结果.插图;
+      }
+
+      // 提示词没变化时只保留提示词结果，不浪费一次生图。
       pushQueueTask(stateRef.current, 'narrative_image_parse', 'success', {
-        detail: 变化数 > 0
-          ? `已重写 ${变化数}/${合并后.length} 张的提示词（图片保留）。`
-            + `落盘：${落盘.回读确认数}/${落盘.资产数} 张`
-          : 'LLM 这次给出的提示词与原来相同，没有变化。可再点一次重跑。',
+        detail: 'LLM 这次给出的提示词与原来相同，没有变化。可再点一次重跑。',
         rawText: 结果.原始回复,
         turn: 回合,
         targetMessageId: messageId,
       });
-      devLog('net', 'illustration-prompts-reroll-done', { messageId, 图数: 合并后.length, 变化数 });
+      devLog('net', 'illustration-prompts-reroll-no-change', { messageId, 图数: 合并后.length, 落盘: 提示词落盘.回读确认数 });
       return 合并后;
     } catch (err) {
       pushQueueTask(stateRef.current, 'narrative_image_parse', 'failed', {
@@ -1155,6 +1201,109 @@ export function useGame(): UseGameReturn {
         targetMessageId: messageId,
       });
       devLogError('net', 'illustration-prompts-reroll-failed', err, { messageId });
+      throw err;
+    }
+  }, []);
+
+  /**
+   * 自动修复显示对话里的插图缓存丢失：按消息批量重出缺失的图。
+   *
+   * Chat 侧只负责找出 `done` 但地址解析不出来的插图；这里一次性重画同一条消息里
+   * 所有缺失项，避免逐张点击，也避免并发写回时互相覆盖 chatHistory。
+   */
+  const handleRepairIllustrationCache = useCallback(async (
+    messageId: string,
+    缺失插图: import('@/models/chat').叙事插图[],
+    options?: { signal?: AbortSignal },
+  ): Promise<import('@/models/chat').叙事插图[]> => {
+    if (缺失插图.length === 0) return [];
+    const 消息 = stateRef.current.chatHistory.find((项) => 项.id === messageId);
+    const 正文 = 消息?.parsedResponse?.body.trim() || 消息?.content.trim() || '';
+    if (!消息 || !正文) throw new Error('未找到可重画的正文。');
+    const 回合 = Number(消息.gameTime) || stateRef.current.turnCount;
+    const 缺失Id集 = new Set(缺失插图.map((插图) => 插图.id));
+    stateRef.current.setChatHistory((历史) => 历史.map((项) => (
+      项.id === messageId
+        ? {
+          ...项,
+          narrativeImages: (项.narrativeImages ?? []).map((插图) => (
+            缺失Id集.has(插图.id) ? { ...插图, status: 'generating' as const, error: undefined } : 插图
+          )),
+        }
+        : 项
+    )));
+    pushQueueTask(stateRef.current, 'narrative_image_generate', 'pending', {
+      detail: `检测到 ${缺失插图.length} 张插图缓存丢失，正在自动重画…`,
+      turn: 回合,
+      targetMessageId: messageId,
+      阶段: '出图中',
+    });
+    try {
+      const 结果 = await 生成消息插图(
+        stateRef.current,
+        messageId,
+        正文,
+        缺失插图,
+        { signal: options?.signal },
+      );
+      const 替换表 = new Map<string, import('@/models/chat').叙事插图>();
+      缺失插图.forEach((旧图, 序号) => {
+        const 新图 = 结果.插图.at(序号);
+        if (新图) 替换表.set(旧图.id, 新图);
+      });
+      const 下一份历史 = stateRef.current.chatHistory.map((项) => (
+        项.id === messageId
+          ? {
+            ...项,
+            narrativeImages: (项.narrativeImages ?? []).map((插图) => {
+              if (!缺失Id集.has(插图.id)) return 插图;
+              return 替换表.get(插图.id) ?? {
+                ...插图,
+                status: 'failed' as const,
+                error: '自动重画未返回结果。',
+              };
+            }),
+          }
+          : 项
+      ));
+      stateRef.current.set相册(结果.相册);
+      stateRef.current.setChatHistory(下一份历史);
+      const 落盘 = await 保存插图结果(stateRef.current, 下一份历史, 结果.相册, 结果.新增条目);
+      const 成功数 = 结果.插图.filter((插图) => 插图.status === 'done').length;
+      pushQueueTask(
+        stateRef.current,
+        'narrative_image_generate',
+        成功数 > 0 ? 'success' : 'failed',
+        {
+          detail: 成功数 > 0
+            ? `已自动重画 ${成功数}/${缺失插图.length} 张丢失缓存的插图。落盘：${落盘.回读确认数}/${落盘.资产数} 张`
+            : `自动重画失败：${结果.失败数}/${缺失插图.length} 张。`,
+          turn: 回合,
+          targetMessageId: messageId,
+        },
+      );
+      devLog('net', 'illustration-cache-repair-done', { messageId, 缺失: 缺失插图.length, 成功: 成功数 });
+      return 结果.插图;
+    } catch (err) {
+      const 失败原因 = err instanceof Error ? err.message : String(err);
+      stateRef.current.setChatHistory((历史) => 历史.map((项) => (
+        项.id === messageId
+          ? {
+            ...项,
+            narrativeImages: (项.narrativeImages ?? []).map((插图) => (
+              缺失Id集.has(插图.id)
+                ? { ...插图, status: 'failed' as const, error: `自动重画失败：${失败原因}` }
+                : 插图
+            )),
+          }
+          : 项
+      )));
+      pushQueueTask(stateRef.current, 'narrative_image_generate', 'failed', {
+        detail: `自动重画缓存丢失插图失败：${失败原因}`,
+        turn: 回合,
+        targetMessageId: messageId,
+      });
+      devLogError('net', 'illustration-cache-repair-failed', err, { messageId, 缺失: 缺失插图.length });
       throw err;
     }
   }, []);
@@ -1222,6 +1371,7 @@ export function useGame(): UseGameReturn {
     handleGenerateIllustrations,
     handleRegenerateIllustration,
     handleRerollIllustrationPrompts,
+    handleRepairIllustrationCache,
   }), [
     handleSend,
     handleStartOpening,
@@ -1283,6 +1433,7 @@ export function useGame(): UseGameReturn {
     handleGenerateIllustrations,
     handleRegenerateIllustration,
     handleRerollIllustrationPrompts,
+    handleRepairIllustrationCache,
   ]);
 
   return {
