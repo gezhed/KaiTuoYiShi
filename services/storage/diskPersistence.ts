@@ -7,6 +7,8 @@
  */
 import { openDB, SAVES_STORE } from './dbConnection';
 import { installDbWriteSink, type DbWriteBatch } from './idbWriteMirror';
+import { blobToDataUrl } from '@/utils/albumObjectUrl';
+import type { SaveAssetRecord } from '@/utils/saveAssetStorage';
 import {
   LOCAL_SAVE_API_PREFIX,
   LOCAL_SAVE_STORE_NAMES,
@@ -280,12 +282,44 @@ function mergeBack(snapshot: PendingSnapshot): void {
   }
 }
 
+/**
+ * 写盘前把 saveAssets 里的 Blob 转成 dataUrl。
+ *
+ * 磁盘行最终是 JSON，Blob 过 JSON.stringify 会变成 `{}`；刷新后从磁盘回灌
+ * saveAssets 时字节就没了，表现就是「所有相册图每次刷新全丢」。
+ * 这里只转换发给磁盘的副本，IDB 里仍保留 Blob。
+ */
+async function 序列化落盘资产(写入: LocalSaveMutation): Promise<void> {
+  const rows = 写入.puts?.saveAssets;
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  const serialized = await Promise.all(rows.map(async (row) => {
+    if (!row || typeof row !== 'object') return row;
+    const record = row as SaveAssetRecord;
+    if (!(record.blob instanceof Blob)) return row;
+    try {
+      const dataUrl = await blobToDataUrl(record.blob);
+      const { blob: _blob, ...rest } = record;
+      void _blob;
+      return {
+        ...rest,
+        dataUrl,
+        mimeType: record.mimeType || record.blob.type,
+        size: record.size || record.blob.size,
+      };
+    } catch {
+      return row;
+    }
+  }));
+  写入.puts = { ...写入.puts, saveAssets: serialized };
+}
+
 async function flush(): Promise<void> {
   if (flushing || !enabled) return;
   if (pendingOpCount() === 0) return;
   flushing = true;
   const snapshot = snapshotPending();
   try {
+    await 序列化落盘资产(snapshot.mutation);
     const response = await fetch(`${LOCAL_SAVE_API_PREFIX}/mutate`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -380,10 +414,56 @@ async function writeStoreRows(store: LocalSaveStoreName, db: IDBDatabase, rows: 
   });
 }
 
+/** 磁盘上的资产行是否还带真实字节（老版本落盘只有元数据）。 */
+function 资产行有字节(row: unknown): boolean {
+  if (!row || typeof row !== 'object') return false;
+  const record = row as { blob?: unknown; dataUrl?: unknown; originalUrl?: unknown };
+  if (record.blob instanceof Blob) return true;
+  return (typeof record.dataUrl === 'string' && record.dataUrl.startsWith('data:image/'))
+    || (typeof record.originalUrl === 'string' && record.originalUrl.startsWith('data:image/'));
+}
+
+/**
+ * 回灌 saveAssets 时只补磁盘上真正有字节的行，不能整表清空。
+ *
+ * 历史磁盘行（Blob 被 JSON 变成 {}）如果直接覆盖 IDB，会把本次会话里
+ * 仍然有效的 Blob 冲掉；于是每次刷新都看到「相册全空」。
+ */
+async function restoreAssetStore(
+  db: IDBDatabase,
+  first: { rows: unknown[]; nextAfterKey: string | null },
+): Promise<number> {
+  const existing = new Map<string, unknown>();
+  for (const row of await readAllRows(db, 'saveAssets')) {
+    const id = String((row as { id?: unknown }).id ?? '');
+    if (id) existing.set(id, row);
+  }
+  let restored = 0;
+  let page = first;
+  for (;;) {
+    const rows = page.rows.filter((row) => {
+      const id = String((row as { id?: unknown }).id ?? '');
+      if (!id) return false;
+      if (资产行有字节(row)) return true;
+      return !资产行有字节(existing.get(id));
+    });
+    if (rows.length) {
+      await writeStoreRows('saveAssets', db, rows);
+      restored += rows.length;
+    }
+    if (!page.nextAfterKey) break;
+    const next = await fetchStorePage('saveAssets', page.nextAfterKey);
+    if (next === null) break;
+    page = next;
+  }
+  return restored;
+}
+
 /** 用磁盘整库覆盖该 store。先取到首屏再清空——绝不能“清了却没灌回”，那等于抹掉存档。 */
 async function restoreStore(store: LocalSaveStoreName, db: IDBDatabase): Promise<number> {
   const first = await fetchStorePage(store, null);
   if (first === null) return 0;
+  if (store === 'saveAssets') return restoreAssetStore(db, first);
   await clearStore(store, db);
   let restored = 0;
   if (first.rows.length) {
