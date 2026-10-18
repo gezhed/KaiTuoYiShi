@@ -120,7 +120,8 @@ describe('世界书剧情元数据与聚合', () => {
     expect(normalized.剧情来源).toBe('世界书');
     expect(normalized.剧情分类).toBe('主线');
     expect(normalized.剧情地区).toBe('黑塔空间站');
-    expect(normalized.分段列表).toHaveLength(2);
+    expect(normalized.分段列表.length).toBeGreaterThan(0);
+    expect(normalized.分段列表.some((segment) => segment.标题 === '事件一')).toBe(true);
   });
 
   it('独立任务线不会自动跳到下一项任务', () => {

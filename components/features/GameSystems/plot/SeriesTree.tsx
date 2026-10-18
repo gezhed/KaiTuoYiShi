@@ -41,8 +41,15 @@ export function SeriesTree({
           const active = series.id === viewSeries.id;
           const expanded = expandedSeriesId === series.id;
           const completeCount = series.分段列表.filter((item) => item.处理状态 === '已完成').length;
-          const visibleChapters = series.章节列表.filter((chapter) => chapterMatches(chapter.标题));
+          const chapterSegments = (chapter: 剧情编织系列['章节列表'][number]) => series.分段列表.filter((segment) => (
+            segmentMatches(segment)
+            && (segment.起始章序号 === chapter.序号
+              || (segment.章节标题 || []).some((title) => title.includes(chapter.标题) || chapter.标题.includes(title)))
+          ));
           const visibleSegments = series.分段列表.filter(segmentMatches);
+          const visibleChapters = series.章节列表.filter((chapter) => (
+            chapterMatches(chapter.标题) || chapterSegments(chapter).length > 0
+          ));
           const matchedCount = visibleSegments.length;
           return (
             <div key={series.id} className="w-[78vw] max-w-[280px] shrink-0 lg:w-auto lg:max-w-none" style={{ border: `1px solid ${active ? 'rgba(var(--tj-accent-primary), var(--tj-edge-tint-strong))' : 'rgba(var(--tj-accent-primary), var(--tj-edge-tint-weak))'}`, background: active ? 'rgba(var(--tj-accent-primary),0.055)' : 'rgba(var(--tj-bg-primary),0.42)', clipPath: cardClip }}>
@@ -61,63 +68,61 @@ export function SeriesTree({
 
               {expanded && (
                 <div className="space-y-2 px-2 pb-2">
-                  <div>
-                    <div className="mb-1 flex items-center justify-between px-1 text-[11px] font-serif tracking-[0.18em]" style={{ color: 'rgba(var(--tj-accent-primary),0.6)' }}>
-                      <span>章节</span>
-                      {query && <span style={{ color: 'rgba(var(--tj-tech-cyan),0.8)' }}>匹配 {visibleChapters.length}/{series.章节列表.length}</span>}
-                    </div>
-                    <div className="kaituo-options-scroll max-h-28 space-y-1 overflow-y-auto pr-1">
-                      {visibleChapters.map((chapter) => (
-                        <button
-                          key={chapter.id}
-                          className="w-full truncate px-2 py-1 text-left text-[11px]"
-                          style={{ color: 'rgba(var(--tj-text-secondary),0.78)', background: 'rgba(var(--tj-accent-primary),0.035)', clipPath: smallClip }}
-                          onClick={() => onSelectChapter(series, chapter.序号)}
-                        >
-                          {chapter.序号}. {chapter.标题}
-                        </button>
-                      ))}
-                      {visibleChapters.length === 0 && <div className="px-2 py-1 text-[11px]" style={{ color: 'rgba(var(--tj-text-secondary),0.6)' }}>无匹配章节</div>}
-                    </div>
+                  <div className="mb-1 flex items-center justify-between px-1 text-[11px] font-serif tracking-[0.18em]" style={{ color: 'rgba(var(--tj-accent-primary),0.6)' }}>
+                    <span>章节 / 事件</span>
+                    {query && <span style={{ color: 'rgba(var(--tj-tech-cyan),0.8)' }}>匹配 {matchedCount}/{series.分段列表.length} 段</span>}
                   </div>
-
-                  <div>
-                    <div className="mb-1 flex items-center justify-between px-1 text-[11px] font-serif tracking-[0.18em]" style={{ color: 'rgba(var(--tj-accent-primary),0.6)' }}>
-                      <span>分段</span>
-                      {query && <span style={{ color: 'rgba(var(--tj-tech-cyan),0.8)' }}>匹配 {matchedCount}/{series.分段列表.length}</span>}
-                    </div>
-                    <div className="kaituo-options-scroll max-h-80 space-y-1 overflow-y-auto pr-1">
-                      {visibleSegments.map((segment) => {
-                        const selected = selectedSegmentId === segment.id;
-                        const current = segment.运行状态 === '当前' || series.当前分段组号 === segment.组号;
-                        const busy = busyId === segment.id;
-                        return (
+                  <div className="kaituo-options-scroll max-h-[28rem] space-y-2 overflow-y-auto pr-1">
+                    {visibleChapters.map((chapter) => {
+                      const children = chapterSegments(chapter);
+                      return (
+                        <div key={chapter.id}>
                           <button
-                            key={segment.id}
-                            onClick={() => onSelectSegment(segment)}
-                            className="w-full px-2 py-2 text-left"
-                            style={{
-                              background: selected ? 'rgba(var(--tj-accent-primary),0.1)' : runtimeStatusBg[segment.运行状态] || statusBg[segment.处理状态],
-                              border: `1px solid ${current ? 'rgba(var(--tj-accent-primary), var(--tj-edge-tint-strong))' : 'rgba(var(--tj-accent-primary), var(--tj-edge-tint-weak))'}`,
-                              clipPath: smallClip,
-                            }}
+                            className="w-full px-2 py-1 text-left text-[11px]"
+                            style={{ color: 'rgba(var(--tj-text-secondary),0.86)', background: 'rgba(var(--tj-accent-primary),0.055)', clipPath: smallClip }}
+                            onClick={() => onSelectChapter(series, chapter.序号)}
                           >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="min-w-0 truncate font-serif text-xs" style={{ color: selected ? 'rgb(var(--tj-accent-primary))' : 'rgba(var(--tj-text-secondary),0.84)' }}>
-                                {segment.组号}. {segment.标题}
-                              </span>
-                              <span className="text-[10px]" style={{ color: runtimeStatusColor[segment.运行状态] }}>
-                                {segment.运行状态}
-                              </span>
-                            </div>
-                            <div className="mt-1 text-[11px]" style={{ color: statusColor[segment.处理状态] }}>
-                              {busy ? '处理中...' : segment.处理状态} · {segment.章节范围}{segment.剧情地区 ? ` · ${segment.剧情地区}` : ''}
-                            </div>
+                            <span className="flex items-center justify-between gap-2">
+                              <span className="min-w-0 truncate">{chapter.序号}. {chapter.标题}</span>
+                              <span style={{ color: 'rgba(var(--tj-tech-cyan),0.75)' }}>{children.length} 事件</span>
+                            </span>
                           </button>
-                        );
-                      })}
-                      {visibleSegments.length === 0 && <div className="px-2 py-1 text-[11px]" style={{ color: 'rgba(var(--tj-text-secondary),0.6)' }}>无匹配分段</div>}
-                    </div>
+                          <div className="ml-2 mt-1 space-y-1 border-l pl-2" style={{ borderColor: 'rgba(var(--tj-accent-primary),0.15)' }}>
+                            {children.map((segment) => {
+                              const selected = selectedSegmentId === segment.id;
+                              const current = segment.运行状态 === '当前' || series.当前分段组号 === segment.组号;
+                              const busy = busyId === segment.id;
+                              return (
+                                <button
+                                  key={segment.id}
+                                  onClick={() => onSelectSegment(segment)}
+                                  className="w-full px-2 py-1.5 text-left"
+                                  style={{
+                                    background: selected ? 'rgba(var(--tj-accent-primary),0.1)' : runtimeStatusBg[segment.运行状态] || statusBg[segment.处理状态],
+                                    border: `1px solid ${current ? 'rgba(var(--tj-accent-primary), var(--tj-edge-tint-strong))' : 'rgba(var(--tj-accent-primary), var(--tj-edge-tint-weak))'}`,
+                                    clipPath: smallClip,
+                                  }}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="min-w-0 truncate font-serif text-xs" style={{ color: selected ? 'rgb(var(--tj-accent-primary))' : 'rgba(var(--tj-text-secondary),0.84)' }}>
+                                      {segment.组号}. {segment.标题}
+                                    </span>
+                                    <span className="text-[10px]" style={{ color: runtimeStatusColor[segment.运行状态] }}>
+                                      {segment.运行状态}
+                                    </span>
+                                  </div>
+                                  <div className="mt-0.5 text-[11px]" style={{ color: statusColor[segment.处理状态] }}>
+                                    {busy ? '处理中...' : segment.处理状态}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                            {children.length === 0 && <div className="px-2 py-1 text-[11px]" style={{ color: 'rgba(var(--tj-text-secondary),0.55)' }}>无匹配事件</div>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {visibleChapters.length === 0 && <div className="px-2 py-1 text-[11px]" style={{ color: 'rgba(var(--tj-text-secondary),0.6)' }}>无匹配章节/事件</div>}
                   </div>
                 </div>
               )}
