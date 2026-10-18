@@ -149,6 +149,7 @@ export function buildStoryWeavingInjection(system?: 剧情编织系统, ctx?: St
       : '',
     formatWindowSegment('已历经的余波', previous, 'brief'),
     formatWindowSegment(gate.mode === 'strong' ? '当前段核心素材' : '当前段氛围参考', current, gate.mode),
+    formatCurrentSegmentFullText(current, gate.mode),
     formatWindowSegment('前方情节预热', next, 'brief'),
   ].filter(Boolean);
   return blocks.join('\n').trim();
@@ -446,6 +447,20 @@ function formatWindowSegment(title: string, segment?: 剧情编织分段, mode: 
     appendVisibleList(lines, '硬约束', segment.原著硬约束, 3);
   }
   return lines.join('\n');
+}
+
+function formatCurrentSegmentFullText(segment: 剧情编织分段, mode: StoryWeavingInjectionMode): string {
+  const 原文 = String(segment.原文内容 || '').trim();
+  if (!原文) return '';
+  const 上限 = 8000;
+  const 正文 = 原文.length > 上限 ? `${原文.slice(0, 上限 - 1)}…` : 原文;
+  return [
+    '# 当前段完整剧情参考（原世界书）',
+    mode === 'strong'
+      ? '以下是当前段的完整原文（含事件）。可作为推进、台词与细节依据，但不要逐句照搬原文格式。'
+      : '以下是当前段的完整原文（含事件）。仅作背景、人物关系、伏笔与防抢跑参考；当前门禁未满足时不得提前复演或剧透。',
+    正文,
+  ].join('\n');
 }
 
 function evaluateSegmentGate(

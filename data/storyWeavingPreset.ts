@@ -281,7 +281,7 @@ const WORLDBOOK_STORY_WEAVING_PRESETS: BundledStoryWeavingPreset[] = [
   {
     "id": "wb_main_jarilo",
     "title": "【主线·雅利洛-VI】于枯索的冬夜里",
-    "description": "已解析世界书剧情：主线·雅利洛-VI 1.0，3 段。",
+    "description": "已解析世界书剧情：主线·雅利洛-VI 1.0，4 段。",
     "zhikuPresetId": ""
   },
   {
@@ -371,7 +371,7 @@ const WORLDBOOK_STORY_WEAVING_PRESETS: BundledStoryWeavingPreset[] = [
   {
     "id": "wb_main_amphoreus_8",
     "title": "【主线·翁法罗斯 3.7】成为昨日的明天",
-    "description": "已解析世界书剧情：主线·翁法罗斯 3.7，4 段。",
+    "description": "已解析世界书剧情：主线·翁法罗斯 3.7，5 段。",
     "zhikuPresetId": ""
   },
   {
@@ -383,37 +383,37 @@ const WORLDBOOK_STORY_WEAVING_PRESETS: BundledStoryWeavingPreset[] = [
   {
     "id": "wb_main_erxiang_1",
     "title": "【主线·二相乐园 4.0】满月是神不在的时间",
-    "description": "已解析世界书剧情：主线·二相乐园 4.0，2 段。",
+    "description": "已解析世界书剧情：主线·二相乐园 4.0，3 段。",
     "zhikuPresetId": ""
   },
   {
     "id": "wb_main_erxiang_2",
     "title": "【主线·二相乐园 4.1】献给破晓的失控",
-    "description": "已解析世界书剧情：主线·二相乐园 4.1，2 段。",
+    "description": "已解析世界书剧情：主线·二相乐园 4.1，3 段。",
     "zhikuPresetId": ""
   },
   {
     "id": "wb_main_erxiang_3",
     "title": "【主线·二相乐园 4.2】如是，众生欢笑不已",
-    "description": "已解析世界书剧情：主线·二相乐园 4.2，2 段。",
+    "description": "已解析世界书剧情：主线·二相乐园 4.2，3 段。",
     "zhikuPresetId": ""
   },
   {
     "id": "wb_main_erxiang_4",
     "title": "【主线·二相乐园 4.3-4.4】沉于生者的忘川·鸣笛于归寂之时",
-    "description": "已解析世界书剧情：主线·二相乐园 4.3-4.4，2 段。",
+    "description": "已解析世界书剧情：主线·二相乐园 4.3-4.4，6 段。",
     "zhikuPresetId": ""
   },
   {
     "id": "wb_main_qianxing_1",
     "title": "【主线·千星城 4.5-4.6】挥掷千星的筹码·月升之前，与兽共舞",
-    "description": "已解析世界书剧情：主线·千星城 4.5-4.6，2 段。",
+    "description": "已解析世界书剧情：主线·千星城 4.5-4.6，8 段。",
     "zhikuPresetId": ""
   },
   {
     "id": "wb_side_world",
     "title": "【支线合集】世界任务",
-    "description": "已解析世界书剧情：支线，160 段。",
+    "description": "已解析世界书剧情：支线，175 段。",
     "zhikuPresetId": ""
   },
   {
@@ -425,13 +425,13 @@ const WORLDBOOK_STORY_WEAVING_PRESETS: BundledStoryWeavingPreset[] = [
   {
     "id": "wb_side_resident",
     "title": "【常驻合集】常驻任务",
-    "description": "已解析世界书剧情：常驻，21 段。",
+    "description": "已解析世界书剧情：常驻，23 段。",
     "zhikuPresetId": ""
   },
   {
     "id": "wb_side_sequel",
     "title": "【续闻合集】版本续闻",
-    "description": "已解析世界书剧情：续闻，18 段。",
+    "description": "已解析世界书剧情：续闻，29 段。",
     "zhikuPresetId": ""
   },
   {
