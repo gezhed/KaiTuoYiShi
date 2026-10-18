@@ -403,6 +403,20 @@ async function restoreStore(store: LocalSaveStoreName, db: IDBDatabase): Promise
   return restored;
 }
 
+/** 进游戏时预载的最新存档次数据（其余旧档不预载，避免把几 GB 全灌进浏览器）。 */
+const 预载存档数 = 3;
+
+/** 只取最新 N 行（服务端 `?tail=`）：用于存档本体，旧档改按需读取。 */
+async function restoreStoreTail(store: LocalSaveStoreName, db: IDBDatabase, n: number): Promise<number> {
+  const 响应 = await fetch(`${LOCAL_SAVE_API_PREFIX}/store/${store}?tail=${n}&maxBytes=48000000`).catch(() => null);
+  if (!响应 || !响应.ok) return 0;
+  const 数据 = (await 响应.json()) as { rows?: unknown[] };
+  const rows = Array.isArray(数据.rows) ? 数据.rows : [];
+  await clearStore(store, db);
+  if (rows.length) await writeStoreRows(store, db, rows);
+  return rows.length;
+}
+
 /** 用磁盘整库覆盖 IDB：每个 store 先清空再分页拉取。仅在磁盘确为权威时调用。 */
 async function syncFromDisk(diskDbVersion: number | null): Promise<number> {
   if (diskDbVersion !== null && diskDbVersion !== UNIFIED_ID_DB_VERSION) {
@@ -414,6 +428,13 @@ async function syncFromDisk(diskDbVersion: number | null): Promise<number> {
   const db = await openDB();
   let restored = 0;
   for (const store of LOCAL_SAVE_STORE_NAMES) {
+    // 存档本体只拉最新几份；其余旧档不预载（以前这里会把整库灌进浏览器，C 盘一次涨好几 GB）。
+    if (store === 'saves') {
+      restored += await restoreStoreTail(store, db, 预载存档数);
+      continue;
+    }
+    // 增量表动辄数 GB，整表预载就是“把几 GB 写进浏览器”；新旧改由按需读取。
+    if (store === 'saveNodeDeltas') continue;
     restored += await restoreStore(store, db);
   }
   return restored;
