@@ -127,6 +127,55 @@ export async function sealLeafRow(sealedPayload: 存档数据): Promise<void> {
 /** 自动档窗口保留的增量个数。 */
 const AUTO_WINDOW_DELTAS = 5;
 
+/** 陈旧未封版头的冷却期：超过这么久还没封版，就当它永远不会再封了。 */
+const STALE_UNSEALED_MS = 6 * 60 * 60 * 1000;
+
+/** sealLeafRow 会回调 compressAutoSaveWindow，用这个标记防递归。 */
+let 正在封版陈旧头 = false;
+
+/**
+ * 把「久未封版的旧头」封版。
+ *
+ * 为什么需要：清理逻辑把「未封版」当作崩溃窗口保护起来（正确），但反复中断会产生
+ * 一批永远不会再被封的旧头，而它们又不被窗口清理 —— 于是只增不减。
+ * 封版之后它们变回普通节点，交给正常的滚动窗口托管。
+ *
+ * 排除项：当前头、待采纳子叶（both 仍是活的工作现场）。
+ */
+async function 封版陈旧未封版头(rootId: string): Promise<number> {
+  if (正在封版陈旧头) return 0;
+  const catalog = await getSaveCatalogSnapshot();
+  if (!catalog.catalogComplete) return 0;
+  const newest = await loadNewestStory();
+  const 当前头 = newest.headNodeId;
+  const 待采纳 = newest.pendingChildNodeId;
+  const 现在 = Date.now();
+  const 候选 = catalog.items.filter((item) => {
+    const tree = item.saveTree;
+    if (!tree?.nodeId) return false;
+    return item.unsealedHead === true
+      && tree.rootId === rootId
+      && tree.nodeId !== 当前头
+      && tree.nodeId !== 待采纳
+      && 现在 - item.timestamp > STALE_UNSEALED_MS;
+  });
+  if (!候选.length) return 0;
+  正在封版陈旧头 = true;
+  let sealed = 0;
+  try {
+    for (const item of 候选) {
+      const save = await loadSave(item.id);
+      if (!save) continue;
+      await sealLeafRow(save);
+      sealed += 1;
+    }
+  } finally {
+    正在封版陈旧头 = false;
+  }
+  if (sealed) devLog('save', 'stale-unsealed-sealed', { rootId, sealed });
+  return sealed;
+}
+
 /**
  * 自动档滚动窗口：只保留「最新 1 个全量 + 其后 ≤AUTO_WINDOW_DELTAS 个增量」，更早的自动档整段清除。
  * 最新档是自足全量，删旧不会伤到它；手动档与其它分支一律不动。
@@ -193,6 +242,9 @@ export async function compressAutoSaveWindow(rootId: string): Promise<number> {
     if (根 === 当前根) continue;
     if (组.every((项) => 项.type === 'auto')) drop.push(...组);
   }
+  // 顺手收尾：把「久未封版的旧头」封版。它们既不是当前头、也不是待采纳子叶，
+  // 但清理逻辑按崩溃窗口规则不敢删 → 会一直累积。封版后回到正常窗口托管。
+  await 封版陈旧未封版头(trimmed).catch(() => undefined);
   if (!drop.length) return 0;
   // 重定父的边界**只能由链上的截断点决定**：额外清除的节点（同根孤儿链、其它树）与保留链
   // 没有父子关系，拿它们的 parent 当边界会把链根接到链尾 —— 实测会绕成环，整棵存档树读不出来。
