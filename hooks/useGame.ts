@@ -34,7 +34,6 @@ import type { OpeningPlayerPreset, OpeningPresetDraft } from '@/models/opening';
 import { OPENING_PLAYER_PRESETS_KEY, normalizeOpeningPresets } from '@/models/opening';
 import { setStreamingMessage } from '@/utils/streamingMessageStore';
 import { devLog, devLogError } from '@/utils/devLog';
-import { 合并相册系统 } from '@/utils/albumActions';
 import { TURN_STATUS_IDLE } from '@/hooks/useGame/turnStatus';
 import {
   派生回合动作视图,
@@ -614,12 +613,11 @@ export function useGame(): UseGameReturn {
               项.id === message.id ? { ...项, narrativeImages: 结果.插图 } : 项
             ));
             stateRef.current.setChatHistory(下一份历史);
-            const 合并相册 = 合并相册系统(stateRef.current.相册, 结果.相册);
-            stateRef.current.set相册(合并相册);
+            stateRef.current.set相册(结果.相册);
             // 手动生图在回合之外，没有 commitTurn 兜底，必须自己落盘，
             // 否则重新进入后图和相册都会消失。返回值是回读校验结果，
             // 直接写进队列文案，用户就能当场看到「到底存下来没有」。
-            const 落盘 = await 保存插图结果(stateRef.current, 下一份历史, 合并相册, 结果.新增条目);
+            const 落盘 = await 保存插图结果(stateRef.current, 下一份历史, 结果.相册, 结果.新增条目);
             pushQueueTask(stateRef.current, 'narrative_image_parse', 'success', {
               detail: `LLM 返回 ${结果.插图.length} 条插图提示词，成功 ${结果.成功数} 张。`
                 + `落盘：${落盘.回读确认数}/${落盘.资产数} 张${落盘.成功 ? '（已确认）' : `（未确认：${落盘.原因 ?? '未知'}）`}`,
@@ -1059,17 +1057,16 @@ export function useGame(): UseGameReturn {
     });
     try {
       devLog('net', 'illustration-regenerate-start', { id: 插图.id });
-      const 结果 = await 重生成消息单张插图(stateRef.current, 插图, options, messageId);
+      const 结果 = await 重生成消息单张插图(stateRef.current, 插图, options);
       const 下一份历史 = stateRef.current.chatHistory.map((项) => (
         项.id === messageId
           ? { ...项, narrativeImages: (项.narrativeImages ?? []).map((候选) => (候选.id === 插图.id ? 结果.插图 : 候选)) }
           : 项
       ));
-      const 合并相册 = 合并相册系统(stateRef.current.相册, 结果.相册);
-      stateRef.current.set相册(合并相册);
+      stateRef.current.set相册(结果.相册);
       stateRef.current.setChatHistory(下一份历史);
       // 单张重生同样发生在回合之外，不落盘的话重新进入就会丢。
-      const 落盘 = await 保存插图结果(stateRef.current, 下一份历史, 合并相册, 结果.新增条目);
+      const 落盘 = await 保存插图结果(stateRef.current, 下一份历史, 结果.相册, 结果.新增条目);
       pushQueueTask(
         stateRef.current,
         'narrative_image_generate',
@@ -1100,7 +1097,7 @@ export function useGame(): UseGameReturn {
   }, []);
 
   /**
-   * 重跑本回合的插图提示词，并自动用新提示词重出图，用于「换提示词」。
+   * 只重跑本回合的插图提示词（保留已出好的图），用于「对提示词不满意重新生成」。
    *
    * 与 `handleGenerateIllustrations` 的区别：这里**不**重新解析正文锚点，
    * 沿用已有插图的锚点与次序，只替换提示词文本，因此不会打乱图与正文的对应关系。
@@ -1118,7 +1115,7 @@ export function useGame(): UseGameReturn {
     // 用户看到的就是「按下去没用」（实际反馈过）。它同时驱动卡片的运行态文案。
     const 回合 = Number(消息.gameTime) || stateRef.current.turnCount;
     pushQueueTask(stateRef.current, 'narrative_image_parse', 'pending', {
-      detail: '正在重写插图提示词，随后自动重出图…',
+      detail: '正在重跑插图提示词（保留已有图片）…',
       turn: 回合,
       targetMessageId: messageId,
     });
@@ -1131,78 +1128,25 @@ export function useGame(): UseGameReturn {
         已有,
         { 只重新生成提示词: true, signal: options?.signal },
       );
-      // 新提示词逐张并回旧插图：保留原图与锚点。
+      // 新提示词逐张并回旧插图：只换提示词，保留原图与锚点。
       const 合并后 = 合并重跑提示词(已有, 结果.插图);
-      const 提示词历史 = stateRef.current.chatHistory.map((项) => (
+      const 下一份历史 = stateRef.current.chatHistory.map((项) => (
         项.id === messageId ? { ...项, narrativeImages: 合并后 } : 项
       ));
-      stateRef.current.setChatHistory(提示词历史);
-      const 提示词落盘 = await 保存插图结果(stateRef.current, 提示词历史, stateRef.current.相册, 结果.新增条目);
+      stateRef.current.setChatHistory(下一份历史);
+      const 落盘 = await 保存插图结果(stateRef.current, 下一份历史, stateRef.current.相册, 结果.新增条目);
+      // 提示词是否真的换了，要能被确认：卡片上不再显示提示词，所以这里报出来。
       const 变化数 = 合并后.filter((项, 序号) => 项.prompt !== 已有[序号]?.prompt).length;
-
-      // 换了提示词就自动重出图；不再停在“只换词、图还是旧的”的半截状态。
-      if (变化数 > 0) {
-        pushQueueTask(stateRef.current, 'narrative_image_generate', 'pending', {
-          detail: `提示词已重写（${变化数} 张），正在自动重出图…`,
-          turn: 回合,
-          targetMessageId: messageId,
-          阶段: '出图中',
-        });
-        const 出图结果 = await 生成消息插图(
-          stateRef.current,
-          messageId,
-          正文,
-          合并后,
-          {
-            signal: options?.signal,
-            on进度: (事件) => {
-              if (事件.阶段 !== '出图' || (事件.完成数 ?? 0) > 0) return;
-              pushQueueTask(stateRef.current, 'narrative_image_generate', 'pending', {
-                detail: `正在自动重出 ${事件.总数 ?? 0} 张图…`,
-                turn: 回合,
-                targetMessageId: messageId,
-                阶段: '出图中',
-              });
-            },
-          },
-        );
-        const 出图历史 = stateRef.current.chatHistory.map((项) => (
-          项.id === messageId
-            ? {
-              ...项,
-              narrativeImages: 出图结果.插图.map((图, 序号) => ({
-                ...图,
-                // 换词后仍按旧图的位置/类型落位；空锚点继续走正文末尾兜底卡片。
-                description: 合并后[序号]?.description ?? 图.description,
-                type: 合并后[序号]?.type ?? 图.type,
-                kind: 合并后[序号]?.kind ?? 图.kind,
-              })),
-            }
-            : 项
-        ));
-        const 出图相册 = 合并相册系统(stateRef.current.相册, 出图结果.相册);
-        stateRef.current.set相册(出图相册);
-        stateRef.current.setChatHistory(出图历史);
-        const 出图落盘 = await 保存插图结果(stateRef.current, 出图历史, 出图相册, 出图结果.新增条目);
-        pushQueueTask(stateRef.current, 'narrative_image_parse', 'success', {
-          detail: `已重写 ${变化数}/${合并后.length} 张提示词，并自动重出 ${出图结果.成功数}/${出图结果.插图.length} 张。`
-            + `落盘：${出图落盘.回读确认数}/${出图落盘.资产数} 张`,
-          rawText: 结果.原始回复,
-          turn: 回合,
-          targetMessageId: messageId,
-        });
-        devLog('net', 'illustration-prompts-reroll-done', { messageId, 图数: 合并后.length, 变化数, 重出: 出图结果.成功数 });
-        return 出图结果.插图;
-      }
-
-      // 提示词没变化时只保留提示词结果，不浪费一次生图。
       pushQueueTask(stateRef.current, 'narrative_image_parse', 'success', {
-        detail: 'LLM 这次给出的提示词与原来相同，没有变化。可再点一次重跑。',
+        detail: 变化数 > 0
+          ? `已重写 ${变化数}/${合并后.length} 张的提示词（图片保留）。`
+            + `落盘：${落盘.回读确认数}/${落盘.资产数} 张`
+          : 'LLM 这次给出的提示词与原来相同，没有变化。可再点一次重跑。',
         rawText: 结果.原始回复,
         turn: 回合,
         targetMessageId: messageId,
       });
-      devLog('net', 'illustration-prompts-reroll-no-change', { messageId, 图数: 合并后.length, 落盘: 提示词落盘.回读确认数 });
+      devLog('net', 'illustration-prompts-reroll-done', { messageId, 图数: 合并后.length, 变化数 });
       return 合并后;
     } catch (err) {
       pushQueueTask(stateRef.current, 'narrative_image_parse', 'failed', {

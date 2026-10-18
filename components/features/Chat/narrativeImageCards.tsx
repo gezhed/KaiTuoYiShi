@@ -27,7 +27,7 @@ function 取尺寸文本(提示词: string): string {
  * 正文里的插图卡片。
  *
  * 操作全部收成图标 + 悬停说明：
- *   查看大图 / 重新生成 / 修改提示词 / 换提示词并重出图。
+ *   查看大图 / 重新生成 / 修改提示词 / 换提示词。
  * 之前同一件事在标题行和展开区各写了一遍文字按钮（「重新生成」与「原样重生」、
  * 「改提示词」与「改提示词并重生」），既占正文空间又要读两遍才知道是同一个动作。
  */
@@ -43,7 +43,7 @@ export function NarrativeImageCard({
   album?: 相册系统;
   regenerating?: boolean;
   onRegenerate?: (选项?: 插图重生选项) => void;
-  /** 重写本回合的提示词，并自动用新提示词重出图。 */
+  /** 只重跑本回合的提示词，保留已出好的图。 */
   onRerollPrompts?: () => void;
   /** 默认是否直接展开显示图片（设置项，默认折叠）。 */
   defaultExpanded?: boolean;
@@ -116,7 +116,7 @@ export function NarrativeImageCard({
           size="sm"
           icon={Wand2}
           label="换提示词"
-          description="重写提示词并自动用新提示词重出图"
+          description="只让 LLM 重写提示词，保留已出的图"
           onClick={onRerollPrompts}
         />
       ) : null}

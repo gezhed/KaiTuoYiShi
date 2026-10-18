@@ -93,29 +93,6 @@ export function 添加图片到相册(album: 相册系统, item: { asset: 图片
   };
 }
 
-/**
- * 合并两份相册快照。
- *
- * 自动修复逐张串行出图：上一张刚 `set相册`，下一张开始时的 `stateRef` 可能还是旧快照。
- * 如果直接用「旧快照 + 本张」覆盖，前一张甚至原相册的图都会被抹掉（重启后相册变空）。
- * 这里以「当前状态」为底，按 id 去重后把新结果并进来，避免任何一侧丢图。
- */
-export function 合并相册系统(当前: 相册系统, 新的: 相册系统): 相册系统 {
-  const assets = new Map<string, 图片资源>();
-  const entries = new Map<string, 相册条目>();
-  for (const asset of [...新的.assets, ...当前.assets]) {
-    if (asset.id && !assets.has(asset.id)) assets.set(asset.id, asset);
-  }
-  for (const entry of [...新的.entries, ...当前.entries]) {
-    if (entry.id && !entries.has(entry.id)) entries.set(entry.id, entry);
-  }
-  return {
-    ...当前,
-    assets: [...assets.values()],
-    entries: [...entries.values()],
-  };
-}
-
 export function 读取相册条目地址(album: 相册系统, entryId: string): string | undefined {
   const entry = album.entries.find((item) => item.id === entryId);
   if (!entry) return undefined;

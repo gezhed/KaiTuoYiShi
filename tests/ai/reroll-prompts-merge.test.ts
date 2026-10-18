@@ -45,12 +45,6 @@ describe('合并重跑提示词', () => {
     expect(合并重跑提示词(旧, 新)[0].description).toBe('新锚点');
   });
 
-  it('新锚点只是「插图 N」兜底时，旧空锚点保持为空', () => {
-    const 旧 = [建插图({ description: '' })];
-    const 新 = [建插图({ prompt: 'image###新###', description: '插图 1' })];
-    expect(合并重跑提示词(旧, 新)[0].description).toBe('');
-  });
-
   it('新提示词为空时保留旧提示词，不清空', () => {
     const 旧 = [建插图({ prompt: 'image###旧###' })];
     const 新 = [建插图({ prompt: '' })];

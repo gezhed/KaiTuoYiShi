@@ -115,38 +115,6 @@ describe('生成正文插图（一正文多图）', () => {
     expect(结果.插图[1].description).toBe('她转身离开');
   });
 
-  it('归档时把消息 id 交给相册，供消息插图丢失时回退', async () => {
-    const 消息Ids: string[] = [];
-    const { 依赖 } = 建依赖({
-      归档: async ({ 消息Id }) => {
-        消息Ids.push(消息Id ?? '');
-        return { 数据地址: `asset:asset_${消息Ids.length}` };
-      },
-    });
-    await 生成正文插图({ 消息Id: 'm1', 正文, 设置: 建设置(), 依赖 });
-    expect(消息Ids).toEqual(['m1', 'm1']);
-  });
-
-  it('重出已有插图时保留原锚点，包括空锚点（正文末尾兜底卡片）', async () => {
-    const { 依赖 } = 建依赖();
-    const 已有: 叙事插图[] = [
-      {
-        id: 'old_1', dataUrl: 'asset:old_1', type: 'scene', kind: 'snapshot', prompt: 'image###A###',
-        description: '', status: 'done',
-      },
-      {
-        id: 'old_2', dataUrl: 'asset:old_2', type: 'character', kind: 'character', prompt: 'image###B###',
-        description: '她转身离开', status: 'done',
-      },
-    ];
-    const 结果 = await 生成正文插图({ 消息Id: 'm1', 正文, 设置: 建设置(), 依赖, 已有插图: 已有 });
-    expect(结果.插图).toHaveLength(2);
-    expect(结果.插图[0].description).toBe('');
-    expect(结果.插图[0].type).toBe('scene');
-    expect(结果.插图[1].description).toBe('她转身离开');
-    expect(结果.插图[1].type).toBe('character');
-  });
-
   it('每轮上限截断图数', async () => {
     const { 依赖, 出图次数 } = 建依赖();
     const 结果 = await 生成正文插图({

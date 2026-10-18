@@ -10,7 +10,6 @@ import type { TurnActionsApi, 回合动作上下文 } from '@/hooks/useGame/turn
 import { TurnItem } from './TurnItem';
 import { mediumClip } from '@/components/ui/clipPaths';
 import type { 插图重生选项 } from './illustrationActions';
-import { 找出丢失缓存插图, type 丢失缓存插图 } from '@/utils/illustrationCacheRepair';
 
 interface ChatListProps {
   messages: 聊天消息[];
@@ -32,9 +31,6 @@ interface ChatListProps {
   devMode?: boolean;
   onIllustrationRegenerate?: (messageId: string, 插图: 叙事插图, 选项?: 插图重生选项) => void;
   onIllustrationRerollPrompts?: (messageId: string) => void;
-  /** 检测到显示中的插图缓存丢失时，自动批量重画。 */
-  插图缓存自动重画?: boolean;
-  onIllustrationRepairMissing?: (messageId: string, 缺失: 丢失缓存插图[]) => void | Promise<void>;
 }
 
 interface NeighborMeta {
@@ -163,7 +159,7 @@ function buildNeighborMeta(messages: 聊天消息[]): NeighborMeta[] {
   return meta;
 }
 
-export function ChatList({ messages, loading, scrollRef, onEditBody, turnActions, turnActionContext, narrativeImageManualEnabled = false, 插图显示, 插图缓存自动重画 = false, onIllustrationRepairMissing, 逐句推进, npcRecords, traveler, album, showInnerVoice = true, visualTextSettings, devMode = false, onIllustrationRegenerate, onIllustrationRerollPrompts }: ChatListProps) {
+export function ChatList({ messages, loading, scrollRef, onEditBody, turnActions, turnActionContext, narrativeImageManualEnabled = false, 插图显示, 逐句推进, npcRecords, traveler, album, showInnerVoice = true, visualTextSettings, devMode = false, onIllustrationRegenerate, onIllustrationRerollPrompts }: ChatListProps) {
   const streamingMessage = useStreamingMessage();
   const 上次广播时刻 = useRef(0);
   // 只有「主机」才广播过程状态；遥控端（手机）只是显示，绝不转发。
@@ -270,56 +266,6 @@ export function ChatList({ messages, loading, scrollRef, onEditBody, turnActions
     [renderedStartIndex, visibleMessages],
   );
   const hasEarlierMessages = renderedStartIndex > 0;
-
-  const 自动修复尝试 = useRef<Set<string>>(new Set());
-  const 自动修复中 = useRef(false);
-  const 修复回调 = useRef(onIllustrationRepairMissing);
-  useEffect(() => {
-    修复回调.current = onIllustrationRepairMissing;
-  }, [onIllustrationRepairMissing]);
-  useEffect(() => {
-    if (!插图缓存自动重画 || !album || loading) return;
-    const timer = window.setTimeout(() => {
-      if (自动修复中.current) return;
-      const repair = 修复回调.current;
-      if (!repair) return;
-      /*
-       * 只修最近十回合，且从最新回合往前：当前 100 回合就扫 100→90，
-       * 再早的缺图不再自动补，避免一开开关把整段历史重画一遍。
-       */
-      const 当前回合 = visibleMessages.reduce((最大, 消息) => {
-        const 回合 = Number(消息.gameTime);
-        return Number.isFinite(回合) ? Math.max(最大, 回合) : 最大;
-      }, 0);
-      const 最早回合 = 当前回合 - 10;
-      const 消息位置 = new Map(visibleMessages.map((消息, 位置) => [消息.id, 位置]));
-      const 候选 = 找出丢失缓存插图(visibleMessages, album)
-        .filter((缺失) => 缺失.回合 >= 最早回合)
-        .sort((甲, 乙) => (
-          乙.回合 - 甲.回合
-          || (消息位置.get(乙.messageId) ?? 0) - (消息位置.get(甲.messageId) ?? 0)
-          || 甲.序号 - 乙.序号
-        ));
-      if (候选.length === 0) return;
-      自动修复中.current = true;
-      void (async () => {
-        // 一次只发一个生图请求，完成后再处理下一张。
-        for (const 缺失 of 候选) {
-          const 键 = `${缺失.messageId}:${缺失.序号}`;
-          if (自动修复尝试.current.has(键)) continue;
-          自动修复尝试.current.add(键);
-          try {
-            await repair(缺失.messageId, [缺失]);
-          } catch {
-            // 单张失败已写回 failed，继续下一张，不能卡住整个队列。
-          }
-        }
-      })().finally(() => {
-        自动修复中.current = false;
-      });
-    }, 800);
-    return () => window.clearTimeout(timer);
-  }, [插图缓存自动重画, album, visibleMessages, loading]);
 
   const allNeighborMeta = useMemo(
     () => buildNeighborMeta(visibleMessages),

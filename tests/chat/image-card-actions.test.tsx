@@ -65,7 +65,7 @@ describe('插图卡片：图标操作 + 悬停说明', () => {
     expect(screen.queryByText('改提示词')).toBeNull();
   });
 
-  it('「重新生成」按当前提示词重出；「换提示词」触发重写并自动重出', () => {
+  it('「重新生成」按当前提示词重出；「换提示词」只重写提示词', () => {
     const onRegenerate = vi.fn();
     const onRerollPrompts = vi.fn();
     render(

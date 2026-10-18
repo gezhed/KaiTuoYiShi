@@ -54,8 +54,6 @@ export interface 插图流水线依赖 {
     锚点索引: number;
     宽度: number;
     高度: number;
-    /** 来源消息；相册条目带上 targetId，消息插图丢失时可回退显示。 */
-    消息Id?: string;
     signal?: AbortSignal;
   }) => Promise<{ 数据地址?: string } | void>;
   /** 把锚点行文本解析成 `{ 行列表, 全文 }`；默认按换行切分。 */
@@ -311,14 +309,6 @@ export async function 生成正文插图(参数: 生成正文插图参数): Prom
       宽度: 锚点.宽度,
       高度: 锚点.高度,
     });
-    // 重出图沿用旧插图的锚点：保留空 description（正文末尾兜底卡片），
-    // 不能因为建插图时给了「插图 N」兜底文案，就把图从正文里挤掉。
-    const 旧图 = 参数.已有插图?.[序号];
-    if (旧图) {
-      记录.description = 旧图.description;
-      记录.type = 旧图.type;
-      记录.kind = 旧图.kind;
-    }
 
     const 有效标记 = 锚点.提示词标记?.trim()
       ? 锚点.提示词标记
@@ -346,7 +336,6 @@ export async function 生成正文插图(参数: 生成正文插图参数): Prom
           锚点索引: 锚点.锚点索引,
           宽度: 出图.宽度,
           高度: 出图.高度,
-          消息Id,
           signal,
         });
         if (归档结果?.数据地址) 完成.dataUrl = 归档结果.数据地址;
@@ -372,8 +361,6 @@ export async function 生成正文插图(参数: 生成正文插图参数): Prom
 /** 重生成单张插图：用编辑后的提示词覆盖并重出这一张。 */
 export async function 重生成单张插图(参数: {
   插图: 叙事插图;
-  /** 来源消息；用于相册 targetId 回退。 */
-  消息Id?: string;
   /** 用户在编辑框里改过的纯提示词文本；不传则沿用原标记。 */
   新提示词正文?: string;
   /** 用户在尺寸选择器里指定的尺寸，优先于提示词里的 `WxH`。 */
@@ -415,7 +402,6 @@ export async function 重生成单张插图(参数: {
         锚点索引: -1,
         宽度: 出图.宽度,
         高度: 出图.高度,
-        消息Id: 参数.消息Id,
         signal,
       });
       if (归档结果?.数据地址) 完成.dataUrl = 归档结果.数据地址;
@@ -441,14 +427,10 @@ export function 合并重跑提示词(旧插图: 叙事插图[], 新插图: 叙�
   return 旧插图.map((旧, 序号) => {
     const 新 = 新插图[序号];
     if (!新) return 旧;
-    const 新描述 = 新.description?.trim() ?? '';
-    // `建插图` 在没有锚点时会兜底成「插图 N」；这不是正文挂载点。
-    // 旧图没有锚点时保持空 description，继续走正文末尾的兜底卡片，别把它挤没。
-    const 新描述可用 = 新描述.length > 0 && !/^插图\s*\d+$/.test(新描述);
     return {
       ...旧,
       prompt: 新.prompt || 旧.prompt,
-      description: 新描述可用 ? 新描述 : 旧.description,
+      description: 新.description || 旧.description,
     };
   });
 }

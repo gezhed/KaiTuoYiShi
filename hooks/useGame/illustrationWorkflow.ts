@@ -149,7 +149,7 @@ export function 构造插图依赖(
         高度: 结果.结果.高度,
       };
     },
-    归档: async ({ 插图, 提示词标记, 宽度, 高度, 消息Id }) => {
+    归档: async ({ 插图, 提示词标记, 宽度, 高度 }) => {
       if (插图.status !== 'done') return undefined;
       const 引用 = 插图.dataUrl;
       if (!引用) return undefined;
@@ -158,7 +158,6 @@ export function 构造插图依赖(
         src: 引用,
         source: 'generated',
         targetType: 'scene',
-        targetId: 消息Id,
         slot: 'scene',
         prompt: 提示词标记,
         negativePrompt: 插图.negativePrompt,
@@ -401,15 +400,12 @@ export async function 重生成消息单张插图(
     覆盖尺寸?: { 宽度: number; 高度: number } | null;
     signal?: AbortSignal;
   },
-  /** 来源消息；相册条目带上 targetId，消息插图丢失时可回退显示。 */
-  消息Id?: string,
 ): Promise<{ 插图: 叙事插图; 相册: 相册系统; 新增条目: 归档条目[] }> {
   const 新增条目: 归档条目[] = [];
   const 依赖 = 构造插图依赖(state, (条目) => 新增条目.push(条目));
   const 参考图 = await 解析本次参考图(state.deviceSettings.gameSettings.文生图系统);
   const 新插图 = await 重生成单张插图({
     插图,
-    消息Id,
     新提示词正文: 选项?.新提示词正文,
     覆盖尺寸: 选项?.覆盖尺寸,
     参考图,
