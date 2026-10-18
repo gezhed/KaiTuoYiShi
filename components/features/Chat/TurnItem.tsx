@@ -226,10 +226,10 @@ function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEd
         // 否则开关只对正文末尾的兜底卡片生效（实际反馈过这个不对称）。
         defaultExpanded={插图显示?.默认展开 === true}
         regenerating={snapshotAction?.running}
-        onRegenerate={onIllustrationRegenerate
+        onRegenerate={onIllustrationRegenerate && !插图.id.startsWith('album_fallback_')
           ? (选项) => onIllustrationRegenerate(message.id, 插图, 选项)
           : undefined}
-        onRerollPrompts={onIllustrationRerollPrompts
+        onRerollPrompts={onIllustrationRerollPrompts && !插图.id.startsWith('album_fallback_')
           ? () => onIllustrationRerollPrompts(message.id)
           : undefined}
       />
@@ -394,7 +394,7 @@ function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEd
       {(
         (插图显示?.默认显示 === false
           ? false
-          : (message.narrativeImages && message.narrativeImages.length > 0))
+          : 全部插图.length > 0)
         || (narrativeImageManualEnabled && !isStreaming)
       ) && (
         <div className="px-1 py-2 space-y-2">
@@ -406,10 +406,10 @@ function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEd
               album={album}
               defaultExpanded={插图显示?.默认展开 === true}
               regenerating={snapshotAction?.running}
-              onRegenerate={onIllustrationRegenerate
+              onRegenerate={onIllustrationRegenerate && !img.id.startsWith('album_fallback_')
                 ? (选项) => onIllustrationRegenerate(message.id, img, 选项)
                 : undefined}
-              onRerollPrompts={onIllustrationRerollPrompts
+              onRerollPrompts={onIllustrationRerollPrompts && !img.id.startsWith('album_fallback_')
                 ? () => onIllustrationRerollPrompts(message.id)
                 : undefined}
             />
