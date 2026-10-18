@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>图片迁移 · 从浏览器搬到磁盘</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 32px; font-family: system-ui, -apple-system, "Microsoft YaHei", sans-serif; background: #14161a; color: #e8eaf0; }
+  .wrap { max-width: 780px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 8px; }
+  p.sub { color: #9aa3b2; margin: 0 0 24px; line-height: 1.7; }
+  button { font-size: 18px; padding: 14px 28px; border: 0; border-radius: 10px; cursor: pointer; background: #3d6df2; color: #fff; }
+  button:disabled { background: #2a3550; color: #7b8496; cursor: default; }
+  pre { margin-top: 24px; padding: 16px; background: #0c0e12; border: 1px solid #232833; border-radius: 10px; font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-break: break-all; min-height: 120px; }
+  .ok { color: #6ee7a8; } .warn { color: #f6c46b; } .err { color: #ff8a8a; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>图片迁移：把浏览器里的图片搬到磁盘</h1>
+  <p class="sub">
+    点下面这个按钮即可。<br />
+    它会把浏览器里两个库（<b>TimeJourneyDB</b> 与 <b>KaiTuoYiShiImageCache</b>）中存着的图片，全部导出到磁盘的 <b>save/assets/</b>。<br />
+    <b>本页只导出，不删除任何图片</b> —— 等我把读取代码改好、你确认图片能正常显示之后，再由我来清理浏览器里的旧副本。
+  </p>
+  <button id="go">开始导出图片</button>
+  <pre id="log">准备好后点上面的按钮。</pre>
+</div>
+<script>
+  const logEl = document.getElementById('log');
+  const goBtn = document.getElementById('go');
+  const lines = [];
+  function say(text, cls) {
+    lines.push({ text: text, cls: cls || '' });
+    logEl.innerHTML = lines.map((t) => t.cls ? '<span class="' + t.cls + '">' + t.text + '</span>' : t.text).join('\n');
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  function openDB(name) {
+    return new Promise((res) => {
+      const r = indexedDB.open(name);
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => res(null);
+      r.onblocked = () => res(null);
+    });
+  }
+  function getAll(db, name) {
+    return new Promise((res) => {
+      try {
+        const q = db.transaction(name, 'readonly').objectStore(name).getAll();
+        q.onsuccess = () => res(q.result || []);
+        q.onerror = () => res([]);
+      } catch { res([]); }
+    });
+  }
+  function mb(n) { return (n / 1048576).toFixed(1); }
+  function extOf(mime, type) {
+    const t = String(mime || type || '');
+    if (t.indexOf('png') >= 0) return '.png';
+    if (t.indexOf('jpeg') >= 0 || t.indexOf('jpg') >= 0) return '.jpg';
+    if (t.indexOf('webp') >= 0) return '.webp';
+    if (t.indexOf('gif') >= 0) return '.gif';
+    return '.bin';
+  }
+
+  goBtn.addEventListener('click', async () => {
+    goBtn.disabled = true;
+    lines.length = 0;
+    let totalSaved = 0;
+    let totalBytes = 0;
+    let totalFailed = 0;
+    try {
+      const targets = [
+        { db: 'KaiTuoYiShiImageCache', stores: ['imageCacheImages', 'imageCacheEntries'] },
+        { db: 'TimeJourneyDB', stores: ['saveAssets', 'saveAssetBlobs'] },
+      ];
+      for (const target of targets) {
+        say('');
+        say('=== 打开 ' + target.db + ' ===', 'ok');
+        const db = await openDB(target.db);
+        if (!db) { say('   打不开（可能不存在），跳过', 'warn'); continue; }
+        const names = Array.from(db.objectStoreNames);
+        say('   现有表：' + (names.length ? names.join(', ') : '（无）'));
+        for (const store of names) {
+          if (target.stores.indexOf(store) < 0 && store.indexOf('mage') < 0 && store.indexOf('sset') < 0) continue;
+          const rows = await getAll(db, store);
+          let storeSaved = 0;
+          let storeBytes = 0;
+          let storeBlobs = 0;
+          let index = 0;
+          for (const row of rows) {
+            index += 1;
+            let slot = 0;
+            for (const value of Object.values(row)) {
+              if (!(value instanceof Blob)) continue;
+              slot += 1;
+              storeBlobs += 1;
+              const baseId = String(row.id || row.key || row.assetId || row.图片Id || row.imageId || (store + '_' + index));
+              const safe = baseId.replace(/[^A-Za-z0-9._-]/g, '_');
+              const name = store + '__' + safe + (slot > 1 ? '-' + slot : '') + extOf(row.mimeType || row.mime, value.type);
+              try {
+                const resp = await fetch('/api/saves/asset/' + name, {
+                  method: 'POST',
+                  headers: { 'content-type': 'application/octet-stream' },
+                  body: value,
+                });
+                if (resp.ok) { storeSaved += 1; storeBytes += value.size; }
+                else { totalFailed += 1; }
+              } catch { totalFailed += 1; }
+            }
+          }
+          say('   ' + store + '：行 ' + rows.length + '，含 Blob ' + storeBlobs + ' 个，已导出 ' + storeSaved + ' 张 / ' + mb(storeBytes) + ' MB', storeSaved ? 'ok' : 'warn');
+          totalSaved += storeSaved;
+          totalBytes += storeBytes;
+        }
+      }
+
+      say('');
+      say('=== 结果 ===', 'ok');
+      say('一共导出：' + totalSaved + ' 张，共 ' + mb(totalBytes) + ' MB' + (totalFailed ? '（失败 ' + totalFailed + ' 个）' : ''), totalSaved ? 'ok' : 'err');
+      if (totalSaved === 0) {
+        say('一张都没找到。请把上面「现有表」那几行发我，我按实际表名再改。', 'warn');
+      } else {
+        say('图片已保存到磁盘 save/assets/。浏览器里的旧副本我暂时不删。', 'ok');
+        say('接下来刷新游戏页面即可；我这边会继续改读取代码。', 'warn');
+      }
+    } catch (error) {
+      say('出错了：' + String(error && error.message ? error.message : error), 'err');
+    } finally {
+      goBtn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
