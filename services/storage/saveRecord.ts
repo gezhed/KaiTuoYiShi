@@ -13,10 +13,11 @@ import {
 import type { SaveCatalogSnapshot, SaveListItemSummary } from '@/contracts/storage';
 import { buildSaveSummary } from './saveSummary';
 import { SAVES_STORE, SAVE_SUMMARIES_STORE, SAVE_NODE_DELTAS_STORE } from './dbConnection';
+import { readStoreRow } from './fileStore';
 import { toError } from '@/utils/storageUtils';
 
 export async function loadRawSave(db: IDBDatabase, id: number): Promise<存档数据 | null> {
-  return new Promise((resolve, reject) => {
+  const 本地 = await new Promise<存档数据 | null>((resolve, reject) => {
     const tx = db.transaction(SAVES_STORE, 'readonly');
     const store = tx.objectStore(SAVES_STORE);
     const request = store.get(id);
@@ -26,6 +27,10 @@ export async function loadRawSave(db: IDBDatabase, id: number): Promise<存档�
     };
     request.onerror = () => reject(toError(request.error));
   });
+  if (本地) return 本地;
+  // 未预载的旧档：按需从服务端取一次。
+  // **故意不回写 IndexedDB** —— 回写就又把浏览器（C 盘）撑大了，那就白改了。
+  return await readStoreRow<存档数据>('saves', id);
 }
 
 export async function restoreDeltaSaveIfNeeded(db: IDBDatabase, save: 存档数据, visited = new Set<number>()): Promise<存档数据> {
