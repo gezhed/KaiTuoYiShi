@@ -102,7 +102,9 @@ async function mutate(payload: MutationPayload): Promise<void> {
     }),
   });
   if (!response.ok) {
-    throw new Error(`服务端写入失败：HTTP ${response.status}`);
+    // 把服务端的具体报错带出来：以前只报“HTTP 500”，排查时完全看不到原因。
+    const detail = await response.text().catch(() => '');
+    throw new Error(`服务端写入失败：HTTP ${response.status}${detail ? ' ' + detail.slice(0, 300) : ''}`);
   }
 }
 
