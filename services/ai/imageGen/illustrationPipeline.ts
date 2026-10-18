@@ -309,6 +309,14 @@ export async function 生成正文插图(参数: 生成正文插图参数): Prom
       宽度: 锚点.宽度,
       高度: 锚点.高度,
     });
+    // 重出图沿用旧插图的锚点：保留空 description（正文末尾兜底卡片），
+    // 不能因为建插图时给了「插图 N」兜底文案，就把图从正文里挤掉。
+    const 旧图 = 参数.已有插图?.[序号];
+    if (旧图) {
+      记录.description = 旧图.description;
+      记录.type = 旧图.type;
+      记录.kind = 旧图.kind;
+    }
 
     const 有效标记 = 锚点.提示词标记?.trim()
       ? 锚点.提示词标记
@@ -427,10 +435,14 @@ export function 合并重跑提示词(旧插图: 叙事插图[], 新插图: 叙�
   return 旧插图.map((旧, 序号) => {
     const 新 = 新插图[序号];
     if (!新) return 旧;
+    const 新描述 = 新.description?.trim() ?? '';
+    // `建插图` 在没有锚点时会兜底成「插图 N」；这不是正文挂载点。
+    // 旧图没有锚点时保持空 description，继续走正文末尾的兜底卡片，别把它挤没。
+    const 新描述可用 = 新描述.length > 0 && !/^插图\s*\d+$/.test(新描述);
     return {
       ...旧,
       prompt: 新.prompt || 旧.prompt,
-      description: 新.description || 旧.description,
+      description: 新描述可用 ? 新描述 : 旧.description,
     };
   });
 }

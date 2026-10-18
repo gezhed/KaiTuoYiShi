@@ -10,7 +10,7 @@ import type { TurnActionsApi, 回合动作上下文 } from '@/hooks/useGame/turn
 import { TurnItem } from './TurnItem';
 import { mediumClip } from '@/components/ui/clipPaths';
 import type { 插图重生选项 } from './illustrationActions';
-import { 找出丢失缓存插图 } from '@/utils/illustrationCacheRepair';
+import { 找出丢失缓存插图, type 丢失缓存插图 } from '@/utils/illustrationCacheRepair';
 
 interface ChatListProps {
   messages: 聊天消息[];
@@ -34,7 +34,7 @@ interface ChatListProps {
   onIllustrationRerollPrompts?: (messageId: string) => void;
   /** 检测到显示中的插图缓存丢失时，自动批量重画。 */
   插图缓存自动重画?: boolean;
-  onIllustrationRepairMissing?: (messageId: string, 插图: 叙事插图[]) => void | Promise<void>;
+  onIllustrationRepairMissing?: (messageId: string, 缺失: 丢失缓存插图[]) => void | Promise<void>;
 }
 
 interface NeighborMeta {
@@ -283,21 +283,21 @@ export function ChatList({ messages, loading, scrollRef, onEditBody, turnActions
       if (自动修复中.current) return;
       const repair = 修复回调.current;
       if (!repair) return;
-      const 分组 = new Map<string, 叙事插图[]>();
+      const 分组 = new Map<string, 丢失缓存插图[]>();
       for (const 缺失 of 找出丢失缓存插图(renderedMessages, album)) {
         const 键 = `${缺失.messageId}:${缺失.序号}`;
         if (自动修复尝试.current.has(键)) continue;
         自动修复尝试.current.add(键);
         const 列表 = 分组.get(缺失.messageId) ?? [];
-        列表.push(缺失.插图);
+        列表.push(缺失);
         分组.set(缺失.messageId, 列表);
       }
       if (分组.size === 0) return;
       自动修复中.current = true;
       void (async () => {
-        for (const [messageId, 插图列表] of 分组) {
+        for (const [messageId, 缺失列表] of 分组) {
           try {
-            await repair(messageId, 插图列表);
+            await repair(messageId, 缺失列表);
           } catch {
             // 失败态已写回对应插图，这里只保证同一批其它消息继续修复。
           }

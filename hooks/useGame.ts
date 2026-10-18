@@ -145,7 +145,7 @@ export interface UseGameReturn {
     ) => Promise<import('@/models/chat').叙事插图[]>;
     handleRepairIllustrationCache: (
       messageId: string,
-      缺失插图: import('@/models/chat').叙事插图[],
+      缺失: import('@/utils/illustrationCacheRepair').丢失缓存插图[],
       options?: { signal?: AbortSignal },
     ) => Promise<import('@/models/chat').叙事插图[]>;
   };
@@ -1169,7 +1169,18 @@ export function useGame(): UseGameReturn {
           },
         );
         const 出图历史 = stateRef.current.chatHistory.map((项) => (
-          项.id === messageId ? { ...项, narrativeImages: 出图结果.插图 } : 项
+          项.id === messageId
+            ? {
+              ...项,
+              narrativeImages: 出图结果.插图.map((图, 序号) => ({
+                ...图,
+                // 换词后仍按旧图的位置/类型落位；空锚点继续走正文末尾兜底卡片。
+                description: 合并后[序号]?.description ?? 图.description,
+                type: 合并后[序号]?.type ?? 图.type,
+                kind: 合并后[序号]?.kind ?? 图.kind,
+              })),
+            }
+            : 项
         ));
         stateRef.current.set相册(出图结果.相册);
         stateRef.current.setChatHistory(出图历史);
@@ -1213,27 +1224,32 @@ export function useGame(): UseGameReturn {
    */
   const handleRepairIllustrationCache = useCallback(async (
     messageId: string,
-    缺失插图: import('@/models/chat').叙事插图[],
+    缺失: import('@/utils/illustrationCacheRepair').丢失缓存插图[],
     options?: { signal?: AbortSignal },
   ): Promise<import('@/models/chat').叙事插图[]> => {
-    if (缺失插图.length === 0) return [];
+    if (缺失.length === 0) return [];
     const 消息 = stateRef.current.chatHistory.find((项) => 项.id === messageId);
     const 正文 = 消息?.parsedResponse?.body.trim() || 消息?.content.trim() || '';
     if (!消息 || !正文) throw new Error('未找到可重画的正文。');
     const 回合 = Number(消息.gameTime) || stateRef.current.turnCount;
-    const 缺失Id集 = new Set(缺失插图.map((插图) => 插图.id));
+    const 缺失图 = 缺失.map((项) => 项.插图);
+    /*
+     * 按「序号」而不是插图 id 回收结果：重画后是新插图、新 id，
+     * 而旧 id 在 setChatHistory 的异步更新里可能已经对不上；位置则始终稳定。
+     */
+    const 缺失序号集 = new Set(缺失.map((项) => 项.序号));
     stateRef.current.setChatHistory((历史) => 历史.map((项) => (
       项.id === messageId
         ? {
           ...项,
-          narrativeImages: (项.narrativeImages ?? []).map((插图) => (
-            缺失Id集.has(插图.id) ? { ...插图, status: 'generating' as const, error: undefined } : 插图
+          narrativeImages: (项.narrativeImages ?? []).map((插图, 序号) => (
+            缺失序号集.has(序号) ? { ...插图, status: 'generating' as const, error: undefined } : 插图
           )),
         }
         : 项
     )));
     pushQueueTask(stateRef.current, 'narrative_image_generate', 'pending', {
-      detail: `检测到 ${缺失插图.length} 张插图缓存丢失，正在自动重画…`,
+      detail: `检测到 ${缺失.length} 张插图缓存丢失，正在自动重画…`,
       turn: 回合,
       targetMessageId: messageId,
       阶段: '出图中',
@@ -1243,26 +1259,46 @@ export function useGame(): UseGameReturn {
         stateRef.current,
         messageId,
         正文,
-        缺失插图,
+        缺失图,
         { signal: options?.signal },
       );
-      const 替换表 = new Map<string, import('@/models/chat').叙事插图>();
-      缺失插图.forEach((旧图, 序号) => {
-        const 新图 = 结果.插图.at(序号);
-        if (新图) 替换表.set(旧图.id, 新图);
+      const 当前消息 = stateRef.current.chatHistory.find((项) => 项.id === messageId);
+      const 基础图 = 当前消息?.narrativeImages ?? [];
+      // 结果序号 → 目标位置。优先按旧 id 找；状态更新后 id 对不上时退回 Chat 传来的序号。
+      const 目标位置 = new Map<number, number>();
+      缺失.forEach((项, 结果序号) => {
+        const 按ID = 基础图.findIndex((插图) => 插图.id === 项.插图.id);
+        目标位置.set(结果序号, 按ID >= 0 ? 按ID : 项.序号);
+      });
+      const 最大位置 = Math.max(-1, ...Array.from(目标位置.values()));
+      const 新图数组: Array<import('@/models/chat').叙事插图 | undefined> = Array.from(
+        { length: Math.max(基础图.length, 最大位置 + 1) },
+        (_, 序号) => 基础图[序号],
+      );
+      缺失.forEach((项, 结果序号) => {
+        const 位置 = 目标位置.get(结果序号);
+        if (位置 === undefined) return;
+        const 新图 = 结果.插图.at(结果序号);
+        新图数组[位置] = 新图
+          ? {
+            ...新图,
+            // 位置/渲染语义以旧图为准：空锚点仍走正文末尾兜底卡片，不能换成「插图 N」。
+            description: 项.插图.description,
+            type: 项.插图.type,
+            kind: 项.插图.kind,
+          }
+          : {
+            ...(基础图[位置] ?? 项.插图),
+            status: 'failed' as const,
+            error: '自动重画未返回结果。',
+          };
       });
       const 下一份历史 = stateRef.current.chatHistory.map((项) => (
         项.id === messageId
           ? {
             ...项,
-            narrativeImages: (项.narrativeImages ?? []).map((插图) => {
-              if (!缺失Id集.has(插图.id)) return 插图;
-              return 替换表.get(插图.id) ?? {
-                ...插图,
-                status: 'failed' as const,
-                error: '自动重画未返回结果。',
-              };
-            }),
+            // 即使调用期间消息数组被别的写回改过，也按目标位置把结果补回去。
+            narrativeImages: 新图数组.filter((插图): 插图 is import('@/models/chat').叙事插图 => Boolean(插图)),
           }
           : 项
       ));
@@ -1276,13 +1312,13 @@ export function useGame(): UseGameReturn {
         成功数 > 0 ? 'success' : 'failed',
         {
           detail: 成功数 > 0
-            ? `已自动重画 ${成功数}/${缺失插图.length} 张丢失缓存的插图。落盘：${落盘.回读确认数}/${落盘.资产数} 张`
-            : `自动重画失败：${结果.失败数}/${缺失插图.length} 张。`,
+            ? `已自动重画 ${成功数}/${缺失.length} 张丢失缓存的插图。落盘：${落盘.回读确认数}/${落盘.资产数} 张`
+            : `自动重画失败：${结果.失败数}/${缺失.length} 张。`,
           turn: 回合,
           targetMessageId: messageId,
         },
       );
-      devLog('net', 'illustration-cache-repair-done', { messageId, 缺失: 缺失插图.length, 成功: 成功数 });
+      devLog('net', 'illustration-cache-repair-done', { messageId, 缺失: 缺失.length, 成功: 成功数 });
       return 结果.插图;
     } catch (err) {
       const 失败原因 = err instanceof Error ? err.message : String(err);
@@ -1290,8 +1326,8 @@ export function useGame(): UseGameReturn {
         项.id === messageId
           ? {
             ...项,
-            narrativeImages: (项.narrativeImages ?? []).map((插图) => (
-              缺失Id集.has(插图.id)
+            narrativeImages: (项.narrativeImages ?? []).map((插图, 序号) => (
+              缺失序号集.has(序号)
                 ? { ...插图, status: 'failed' as const, error: `自动重画失败：${失败原因}` }
                 : 插图
             )),
@@ -1303,7 +1339,7 @@ export function useGame(): UseGameReturn {
         turn: 回合,
         targetMessageId: messageId,
       });
-      devLogError('net', 'illustration-cache-repair-failed', err, { messageId, 缺失: 缺失插图.length });
+      devLogError('net', 'illustration-cache-repair-failed', err, { messageId, 缺失: 缺失.length });
       throw err;
     }
   }, []);
