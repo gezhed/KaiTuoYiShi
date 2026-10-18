@@ -439,6 +439,27 @@ export async function 写入已落盘资产记录(records: SaveAssetRecord[]): P
 }
 
 /**
+ * 把 saveAssets 里**全部**资产载入内存缓存。
+ *
+ * `loadSave` 只按当前存档引用的 asset id 取记录；如果存档树加载到了另一片叶子、
+ * 或相册引用没有写进当前行，图片字节其实还在库里，却因为没被请求而显示空白。
+ * 启动/进档时全量载入一次，按 id 寻址的相册引用都能解析。
+ */
+export async function 载入全部相册资产(): Promise<number> {
+  const db = await openDB();
+  if (!db.objectStoreNames.contains(SAVE_ASSETS_STORE)) return 0;
+  const records = await new Promise<SaveAssetRecord[]>((resolve, reject) => {
+    const tx = db.transaction(SAVE_ASSETS_STORE, 'readonly');
+    const req = tx.objectStore(SAVE_ASSETS_STORE).getAll();
+    req.onsuccess = () => resolve((req.result ?? []) as SaveAssetRecord[]);
+    req.onerror = () => reject(toError(req.error));
+  });
+  if (!records.length) return 0;
+  materializeSaveAssetRecords(records);
+  return records.length;
+}
+
+/**
  * 直接读若干图片资产记录（绕过任何内存缓存）。
  *
  * 用途：写完存档后回读校验「字节真的进库了」。落盘失败在这个应用里会被吞掉

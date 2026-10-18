@@ -10,6 +10,7 @@ import { 创建相册图片条目, 添加图片到相册 } from '@/utils/albumAc
 import { writeLeafNode } from '@/services/storage/saveTree';
 import { 读取已落盘资产记录, 写入已落盘资产记录, loadSave, loadSaveIdByNodeId } from '@/services/storage/saveCrud';
 import { getAlbumAssetBlob, dataUrlToBlob, rememberAlbumAssetBlob } from '@/utils/albumObjectUrl';
+import { 保存相册图片字节 } from '@/utils/albumImageDB';
 import { 暂存待落盘字节, 取待落盘字节, 清理待落盘字节 } from '@/utils/pendingAssetBytes';
 import { cleanLeafPatch } from './workflowTransaction';
 import { ensureHeadLeafWritable } from './saveLoadWorkflow';
@@ -172,6 +173,31 @@ export function 构造插图依赖(
       if (字节) {
         rememberAlbumAssetBlob(条目.asset.id, 字节, 条目.asset.mimeType || 字节.type);
         暂存待落盘字节(条目.asset.id, 字节);
+        // 独立图片库：不依赖存档树/磁盘镜像，刷新后仍能按 assetId 取回字节。
+        void 保存相册图片字节(条目.asset.id, {
+          blob: 字节,
+          mimeType: 条目.asset.mimeType || 字节.type,
+          size: 条目.asset.size || 字节.size,
+          title: 条目.entry.title,
+          targetType: 条目.entry.targetType,
+          slot: 条目.entry.slot,
+          prompt: 条目.asset.finalPrompt || 条目.asset.prompt,
+        }).catch((error) => {
+          devLogError('save', 'album-image-db-write-failed', error, { assetId: 条目.asset.id });
+        });
+        // 出图成功就立即写 saveAssets，而不是只等回合末尾的 保存插图结果。
+        // 存档树写入失败/被并发覆盖时，至少图片字节已经独立落库，进档可全量载入。
+        void 写入已落盘资产记录([{
+          id: 条目.asset.id,
+          blob: 字节,
+          mimeType: 条目.asset.mimeType || 字节.type,
+          width: 条目.asset.width,
+          height: 条目.asset.height,
+          size: 条目.asset.size || 字节.size,
+          updatedAt: Date.now(),
+        }]).catch((error) => {
+          devLogError('save', 'album-asset-immediate-write-failed', error, { assetId: 条目.asset.id });
+        });
       }
       onAlbumItem(条目);
       return { 数据地址: `asset:${条目.asset.id}` };

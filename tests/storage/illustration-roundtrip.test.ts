@@ -18,7 +18,7 @@ vi.mock('@/data/zhikuPreset', async (importOriginal) => {
 });
 
 import { loadNewestStory, writeLeafNode } from '@/services/storage/saveTree';
-import { loadSave, loadSaveIdByNodeId } from '@/services/storage/saveCrud';
+import { loadSave, loadSaveIdByNodeId, 写入已落盘资产记录, 载入全部相册资产 } from '@/services/storage/saveCrud';
 import { seedDefaultWorkspace } from '../helpers/workspaceFixture';
 import { clearAlbumAssetObjectUrlCache, getAlbumAssetBlob } from '@/utils/albumObjectUrl';
 import { 创建相册图片条目, 添加图片到相册, 解析相册资源引用 } from '@/utils/albumActions';
@@ -60,6 +60,22 @@ function 建带图内容(): { 历史: 聊天消息[]; 相册: 相册系统 } {
 }
 
 describe('图片字节往返活跃叶子', () => {
+  it('全量载入能恢复当前叶子未引用的资产字节', async () => {
+    const assetId = 'asset_orphan_load_all';
+    const blob = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' });
+    await 写入已落盘资产记录([{
+      id: assetId,
+      blob,
+      mimeType: 'image/png',
+      size: blob.size,
+      updatedAt: Date.now(),
+    }]);
+    clearAlbumAssetObjectUrlCache();
+
+    expect(await 载入全部相册资产()).toBeGreaterThan(0);
+    expect(getAlbumAssetBlob(assetId)).toBeInstanceOf(Blob);
+  });
+
   it('writeLeafNode 写入的图片，loadSave 能连字节一起读回来', async () => {
     await seedDefaultWorkspace();
     const newest = await loadNewestStory();

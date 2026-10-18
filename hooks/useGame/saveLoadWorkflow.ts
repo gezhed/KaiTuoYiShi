@@ -5,7 +5,7 @@ import { 归一化旅人 } from '@/models/character';
 import {
   迁移存档运行态键,
 } from '@/models/settings';
-import { deleteSave as dbDeleteSave, loadLatestSave, loadSave, loadSaveIdByNodeId } from '@/services/storage/saveCrud';
+import { deleteSave as dbDeleteSave, loadLatestSave, loadSave, loadSaveIdByNodeId, 载入全部相册资产 } from '@/services/storage/saveCrud';
 import { adoptUnsealedChildLeaf, createLeafNode, deleteSaveTreeNode, forkSaveTreeLeaf, getSaveTreeNodeSubtree, isActiveLeafWritable, loadActiveLeaf, loadNewestStory, saveNewestStory } from '@/services/storage/saveTree';
 import { isUnsealedHeadSave } from '@/services/storage/saveSummary';
 import { loadSetting, saveSetting } from '@/services/storage/settings';
@@ -37,6 +37,7 @@ import type { 智库系统 } from '@/models/zhiku';
 import { autoAlignCanonStoryProgress } from '@/services/storyProgressService';
 import { alignStoryWeavingToOpeningArchive, buildPersistedStoryWeavingSystem, hydratePersistedStoryWeavingSystem, loadAllBundledStoryWeavingPresets } from '@/data/storyWeavingPreset';
 import { materializeAlbumRuntimePayload, pruneAlbumAssetCache } from '@/utils/albumObjectUrl';
+import { 载入全部相册图片字节, 补齐相册图片记录 } from '@/utils/albumImageDB';
 import { compactDuplicatedSaveImages } from '@/utils/saveImageCompactor';
 import { attachSaveTreeMeta, buildNextSaveTreeMeta, getSaveTreeMeta, type 存档树元信息 } from '@/utils/saveTree';
 import { compactChatHistoryForLongSession, compactChatHistoryForSave, compactVariableBatchHistory } from '@/utils/longSessionRetention';
@@ -175,6 +176,20 @@ export async function enterSession(
   save: 存档数据,
 ): Promise<void> {
   beginSession(state);
+  // 资产按 asset id 独立存于 saveAssets；先把全部字节载入内存，
+  // 避免当前叶子没引用到、但相册/正文仍按 id 寻址的图片显示为空白。
+  await 载入全部相册资产().catch((error) => {
+    devLogError('save', 'album-assets-hydrate-failed', error);
+    return 0;
+  });
+  await 载入全部相册图片字节().catch((error) => {
+    devLogError('save', 'album-image-db-hydrate-failed', error);
+    return 0;
+  });
+  await 补齐相册图片记录(save).catch((error) => {
+    devLogError('save', 'album-image-db-recover-failed', error);
+    return 0;
+  });
   // 读工作区叶子只水合，否则会增殖叶子并写指针。
   const treeMeta = (save as { saveTree?: 存档树元信息 | null }).saveTree;
   const rootId = treeMeta?.rootId ?? null;
@@ -269,6 +284,18 @@ export async function bootRestoreFromNewest(state: UseGameStateReturn): Promise<
     }
     const { newest, leaf } = active;
 
+    await 载入全部相册资产().catch((error) => {
+      devLogError('save', 'album-assets-hydrate-failed', error);
+      return 0;
+    });
+    await 载入全部相册图片字节().catch((error) => {
+      devLogError('save', 'album-image-db-hydrate-failed', error);
+      return 0;
+    });
+    await 补齐相册图片记录(leaf).catch((error) => {
+      devLogError('save', 'album-image-db-recover-failed', error);
+      return 0;
+    });
     devLog('recover', 'boot-restore-start', { headNodeId: newest.headNodeId, saveId: leaf.id });
     hydrate(await prepareHydration(leaf), state);
     await disarmObsoleteEphemeralFields(newest, leaf);
