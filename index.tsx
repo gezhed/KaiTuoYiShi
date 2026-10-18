@@ -1,4 +1,3 @@
-import '@/utils/memoryIndexedDb';
 import React, { useLayoutEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';

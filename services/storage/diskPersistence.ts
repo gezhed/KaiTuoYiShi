@@ -616,13 +616,14 @@ export async function bootstrapDiskPersistence(): Promise<void> {
     enabled = true;
     if (health.hasData) {
       const idbSaves = await countIdbSaves();
-      const syncedAt = readSyncMarker();
-      const diskAdvanced = syncedAt !== null
-        && health.updatedAt !== null
-        && syncedAt !== String(health.updatedAt);
-      const shouldRestore = idbSaves === 0 || diskAdvanced;
+      /*
+       * 真实 IndexedDB 现在是本机真相（入口不再换成内存实现）。
+       * 只有 IDB 为空（首次启动/浏览器数据被清）才从磁盘回灌；
+       * 非空时绝不拿磁盘覆盖，否则刷新一次就会把刚生成、还没镜像完的相册图冲掉。
+       */
+      const shouldRestore = idbSaves === 0;
       if (!shouldRestore) {
-        devLog('save', 'disk-sync-skipped', { idbSaves, syncedAt, diskUpdatedAt: health.updatedAt });
+        devLog('save', 'disk-sync-skipped', { idbSaves, diskUpdatedAt: health.updatedAt });
       } else {
         const compatible = health.dbVersion === null || health.dbVersion === UNIFIED_ID_DB_VERSION;
         if (!compatible && idbSaves > 0) {

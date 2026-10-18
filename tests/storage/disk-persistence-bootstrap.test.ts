@@ -123,13 +123,13 @@ describe('本地落盘 · 启动回灌判定（路 A）', () => {
     expect(await readSaveIds()).toEqual([1]);
   });
 
-  it('磁盘在同步点之后前进：以磁盘覆盖 IDB', async () => {
+  it('IDB 非空时磁盘前进也不覆盖本地：真实 IDB 是本机真相', async () => {
     await putSave({ id: 1, type: 'manual', timestamp: 1 });
     globalThis.localStorage.setItem('kty.localSave.syncedDiskUpdatedAt', '4000');
     installFetch({ ok: true, hasData: true, dbVersion: 10, updatedAt: 5000 }, {
       saves: [{ id: 99, type: 'manual', timestamp: 2 }],
     });
     await bootstrap();
-    expect(await readSaveIds()).toEqual([99]);
+    expect(await readSaveIds()).toEqual([1]);
   });
 });
