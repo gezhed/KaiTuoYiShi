@@ -7,6 +7,8 @@ export interface 丢失缓存插图 {
   插图: 叙事插图;
   /** 在消息 narrativeImages 里的位置；自动重画按位置回收结果。 */
   序号: number;
+  /** 消息的回合号；自动修复只处理最近十回合。 */
+  回合: number;
 }
 
 /**
@@ -22,17 +24,19 @@ export function 找出丢失缓存插图(
   const missing: 丢失缓存插图[] = [];
   for (const message of messages) {
     if (message.role !== 'assistant') continue;
+    const 回合 = Number(message.gameTime);
+    const 消息回合 = Number.isFinite(回合) ? 回合 : 0;
     const images = message.narrativeImages ?? [];
     images.forEach((插图, 序号) => {
       if (插图.status !== 'done') return;
       const raw = 插图.dataUrl.trim() || (插图.assetId ? `asset:${插图.assetId}` : '');
       if (!raw) {
-        missing.push({ messageId: message.id, 插图, 序号 });
+        missing.push({ messageId: message.id, 插图, 序号, 回合: 消息回合 });
         return;
       }
       if (raw.startsWith('static:')) return;
       if (解析相册资源引用(album, raw)) return;
-      missing.push({ messageId: message.id, 插图, 序号 });
+      missing.push({ messageId: message.id, 插图, 序号, 回合: 消息回合 });
     });
   }
   return missing;

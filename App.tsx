@@ -419,8 +419,17 @@ export function App() {
         narrativeImageManualEnabled={narrativeImageManualEnabled}
         插图显示={插图显示}
         插图缓存自动重画={gameSettings.文生图系统.正文配图.缓存丢失自动重画}
-        onIllustrationRepairMissing={(messageId, 插图) => {
-          void actions.handleRepairIllustrationCache(messageId, 插图).catch(() => undefined);
+        onIllustrationRepairMissing={(messageId, 缺失) => {
+          void (async () => {
+            // 自动修复也走玩家验证过的手动单张链路：一张一个请求，写入成功后再下一张。
+            for (const 项 of 缺失) {
+              try {
+                await actions.handleRegenerateIllustration(messageId, 项.插图);
+              } catch {
+                // 单张失败已写回 failed 状态，继续下一张。
+              }
+            }
+          })();
         }}
         逐句推进={逐句推进}
         onEditBody={handleEditBody}

@@ -283,23 +283,35 @@ export function ChatList({ messages, loading, scrollRef, onEditBody, turnActions
       if (自动修复中.current) return;
       const repair = 修复回调.current;
       if (!repair) return;
-      const 分组 = new Map<string, 丢失缓存插图[]>();
-      for (const 缺失 of 找出丢失缓存插图(renderedMessages, album)) {
-        const 键 = `${缺失.messageId}:${缺失.序号}`;
-        if (自动修复尝试.current.has(键)) continue;
-        自动修复尝试.current.add(键);
-        const 列表 = 分组.get(缺失.messageId) ?? [];
-        列表.push(缺失);
-        分组.set(缺失.messageId, 列表);
-      }
-      if (分组.size === 0) return;
+      /*
+       * 只修最近十回合，且从最新回合往前：当前 100 回合就扫 100→90，
+       * 再早的缺图不再自动补，避免一开开关把整段历史重画一遍。
+       */
+      const 当前回合 = visibleMessages.reduce((最大, 消息) => {
+        const 回合 = Number(消息.gameTime);
+        return Number.isFinite(回合) ? Math.max(最大, 回合) : 最大;
+      }, 0);
+      const 最早回合 = 当前回合 - 10;
+      const 消息位置 = new Map(visibleMessages.map((消息, 位置) => [消息.id, 位置]));
+      const 候选 = 找出丢失缓存插图(visibleMessages, album)
+        .filter((缺失) => 缺失.回合 >= 最早回合)
+        .sort((甲, 乙) => (
+          乙.回合 - 甲.回合
+          || (消息位置.get(乙.messageId) ?? 0) - (消息位置.get(甲.messageId) ?? 0)
+          || 甲.序号 - 乙.序号
+        ));
+      if (候选.length === 0) return;
       自动修复中.current = true;
       void (async () => {
-        for (const [messageId, 缺失列表] of 分组) {
+        // 一次只发一个生图请求，完成后再处理下一张。
+        for (const 缺失 of 候选) {
+          const 键 = `${缺失.messageId}:${缺失.序号}`;
+          if (自动修复尝试.current.has(键)) continue;
+          自动修复尝试.current.add(键);
           try {
-            await repair(messageId, 缺失列表);
+            await repair(缺失.messageId, [缺失]);
           } catch {
-            // 失败态已写回对应插图，这里只保证同一批其它消息继续修复。
+            // 单张失败已写回 failed，继续下一张，不能卡住整个队列。
           }
         }
       })().finally(() => {
@@ -307,7 +319,7 @@ export function ChatList({ messages, loading, scrollRef, onEditBody, turnActions
       });
     }, 800);
     return () => window.clearTimeout(timer);
-  }, [插图缓存自动重画, album, renderedMessages, loading]);
+  }, [插图缓存自动重画, album, visibleMessages, loading]);
 
   const allNeighborMeta = useMemo(
     () => buildNeighborMeta(visibleMessages),
