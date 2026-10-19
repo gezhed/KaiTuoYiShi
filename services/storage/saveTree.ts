@@ -42,29 +42,7 @@ export async function createLeafNode(payload: 存档数据): Promise<LeafNodeRes
   return { saveId, saveTree: tree };
 }
 
-/**
- * 确保某一行在本地库里。
- * 磁盘版只预载最新几份存档，更早的检查点读进来时并不在本地库；
- * 而封版/写草稿的事务是直接对本地库操作的，取不到行就会直接报错。
- */
-async function 确保行在本地库(db: IDBDatabase, saveId: number, raw: unknown): Promise<void> {
-  const 已有 = await new Promise<boolean>((resolve, reject) => {
-    const tx = db.transaction(SAVES_STORE, 'readonly');
-    const request = tx.objectStore(SAVES_STORE).getKey(saveId);
-    request.onsuccess = () => resolve(request.result !== undefined);
-    request.onerror = () => reject(toError(request.error));
-  });
-  if (已有) return;
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(SAVES_STORE, 'readwrite');
-    tx.objectStore(SAVES_STORE).put({ ...(raw as object), id: saveId });
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(toError(tx.error));
-    tx.onabort = () => reject(toError(tx.error));
-  });
-  devLog('save', 'row-hydrated-from-disk', { saveId });
-}
-
+/** sealedPayload 必须是 loadSave 恢复出的完整状态（含叶子原 saveTree / id）。 */
 /** sealedPayload 必须是 loadSave 恢复出的完整状态（含叶子原 saveTree / id）。 */
 export async function sealLeafRow(sealedPayload: 存档数据): Promise<void> {
   const saveId = sealedPayload.id;
@@ -73,8 +51,8 @@ export async function sealLeafRow(sealedPayload: 存档数据): Promise<void> {
   if (!raw) {
     throw new Error(`封版叶子失败：叶子行不存在（saveId=${saveId}）。`);
   }
-  // 未预载的行要先补进本地库，否则下面的事务取不到它。
-  await 确保行在本地库(db, saveId, raw);
+  // 未预载的行直接用磁盘读到的这一份，不往内存库回写（几十 MB 一行会顶爆内存）。
+  devLog('save', 'seal-leaf-from-disk', { saveId });
   if (!isUnsealedHeadSave(raw)) {
     devLog('save', 'seal-leaf-skipped-already-sealed', { saveId });
     return;
@@ -100,11 +78,8 @@ export async function sealLeafRow(sealedPayload: 存档数据): Promise<void> {
     let skipped = false;
     const readRequest = saveStore.get(saveId);
     readRequest.onsuccess = () => {
-      const current = readRequest.result as StoredSaveMeta | undefined;
-      if (!current) {
-        reject(new Error(`封版叶子失败：叶子行不存在（saveId=${saveId}）。`));
-        return;
-      }
+      // 本地库取不到就用磁盘读到的行（不预先回写内存库）。
+      const current = (readRequest.result as StoredSaveMeta | undefined) ?? raw;
       if (!isUnsealedHeadSave(current)) {
         skipped = true;
         devLog('save', 'seal-leaf-skipped-already-sealed', { saveId });
@@ -461,9 +436,9 @@ async function putHeadRow(saveId: number, patch: Partial<存档数据>): Promise
   }
   /*
    * 磁盘版只预载最新几份存档，更早的检查点读进来时并不在本地库里。
-   * 而下面的事务是直接对本地库操作的，取不到行就会报「未找到要写入的草稿存档」。
+   * 不往内存库回写，而是直接用磁盘读到的这一份作为事务里的当前值。
    */
-  await 确保行在本地库(db, saveId, rawPreview);
+  devLog('save', 'puthead-from-disk', { saveId });
   const restoredPreview = isDeltaOnlyStoredSave(rawPreview)
     ? await restoreDeltaSaveIfNeeded(db, rawPreview)
     : null;
@@ -476,13 +451,7 @@ async function putHeadRow(saveId: number, patch: Partial<存档数据>): Promise
     const deltaStore = tx.objectStore(SAVE_NODE_DELTAS_STORE);
     const readRequest = saveStore.get(saveId);
     readRequest.onsuccess = () => {
-      const raw = readRequest.result as StoredSaveMeta | undefined;
-      if (!raw) {
-        const error = new Error('未找到要写入的草稿存档。');
-        devLogError('save', 'puthead-rejected-missing', error, { saveId });
-        reject(error);
-        return;
-      }
+      const raw = (readRequest.result as StoredSaveMeta | undefined) ?? rawPreview;
       if (!isUnsealedHeadSave(raw)) {
         const error = new Error('已封版历史节点不可通过 putHeadRow 改写。');
         devLogError('save', 'puthead-rejected-sealed', error, { saveId });

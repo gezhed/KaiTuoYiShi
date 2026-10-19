@@ -70,14 +70,10 @@ export async function loadDeltaRecordByNodeId(db: IDBDatabase, nodeId: string): 
    * 之前的所有对话记录凭空消失。这里按需从磁盘取一份，并补进本地库。
    */
   const diskRecord = await readStoreRow<SaveNodeDeltaRecord>('saveNodeDeltas', nodeId);
-  if (!diskRecord) return null;
-  await new Promise<void>((resolve) => {
-    const tx = db.transaction(SAVE_NODE_DELTAS_STORE, 'readwrite');
-    tx.objectStore(SAVE_NODE_DELTAS_STORE).put(diskRecord);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => resolve();
-    tx.onabort = () => resolve();
-  });
+  /*
+   * 故意**不写回本地库**：单个增量动辄十几 MB，变量结算一轮会读好几个节点，
+   * 写回内存库很容易把标签页顶崩。用时取一份、用完可回收即可。
+   */
   return diskRecord;
 }
 
