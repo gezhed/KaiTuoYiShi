@@ -1,4 +1,4 @@
-import type { 剧情编织系列, 剧情编织系统 } from '@/models/storyWeaving';
+import type { 剧情编织分段, 剧情编织系列, 剧情编织系统 } from '@/models/storyWeaving';
 import { 构造剧情编织系列, 构造剧情编织系统, 归一化剧情编织系统, 归一化剧情编织系列 } from '@/models/storyWeaving';
 import type { 开局档案 } from '@/models/world';
 import { loadAllOrThrow, type ResourceProgress } from '@/data/resourceBundle';
@@ -578,6 +578,17 @@ export function mergeBundledStoryWeavingPresets(saved: 剧情编织系统 | null
           updatedAt: savedSegment.updatedAt,
         };
       }
+      if (persistenceVersion >= 4) {
+        // v4 的 canon 段只保存运行时字段；正文/事件/档案全部从内置资源水合。
+        // 不能把 savedSegment 整个 spread 进来，否则归一化补出的空字段会盖掉内置数据。
+        return {
+          ...segment,
+          启用注入: savedSegment.启用注入,
+          处理状态: savedSegment.处理状态,
+          运行状态: savedSegment.运行状态,
+          updatedAt: savedSegment.updatedAt,
+        };
+      }
       return {
         ...segment,
         ...savedSegment,
@@ -591,6 +602,17 @@ export function mergeBundledStoryWeavingPresets(saved: 剧情编织系统 | null
         激活注入: savedSeries.激活注入,
         当前分段组号: savedSeries.当前分段组号,
         当前阶段概括: savedSeries.当前阶段概括,
+        分段列表: mergedSegments,
+        createdAt: savedSeries.createdAt,
+        updatedAt: Math.max(savedSeries.updatedAt, presetSeries.updatedAt),
+      });
+    }
+    if (persistenceVersion >= 4) {
+      return 构造剧情编织系列({
+        ...presetSeries,
+        激活注入: savedSeries.激活注入,
+        当前分段组号: savedSeries.当前分段组号,
+        当前阶段概括: savedSeries.当前阶段概括 || presetSeries.当前阶段概括,
         分段列表: mergedSegments,
         createdAt: savedSeries.createdAt,
         updatedAt: Math.max(savedSeries.updatedAt, presetSeries.updatedAt),
@@ -617,7 +639,9 @@ export function mergeBundledStoryWeavingPresets(saved: 剧情编织系统 | null
 /** 输入必须是可信构造结果；保存边界请用 buildPersistedStoryWeavingSystem。 */
 export function 投影持久化剧情编织系统(system: 剧情编织系统): 剧情编织系统 {
   return {
-    persistenceVersion: 3,
+    // v4：canon 正文/事件/档案不再写进每条存档，只保留运行时字段；
+    // 否则 1908 个事件段会让每回合存档膨胀到 10MB+，AI 输出和变量结算都会明显卡顿。
+    persistenceVersion: 4,
     系列列表: system.系列列表.map((series) => {
       if (series.来源类型 !== 'canon') return series;
       return {
@@ -625,11 +649,14 @@ export function 投影持久化剧情编织系统(system: 剧情编织系统): �
         来源智库条目ID: [],
         原始文本: undefined,
         章节列表: [],
-        分段列表: series.分段列表.map((segment) => {
-          const persistedSegment = { ...segment } as { 原文内容?: string };
-          delete persistedSegment.原文内容;
-          return persistedSegment;
-        }),
+        分段列表: series.分段列表.map((segment) => ({
+          id: segment.id,
+          组号: segment.组号,
+          启用注入: segment.启用注入,
+          处理状态: segment.处理状态,
+          运行状态: segment.运行状态,
+          updatedAt: segment.updatedAt,
+        })) as unknown as 剧情编织分段[],
       } as unknown as 剧情编织系列;
     }),
     当前系列ID: system.当前系列ID,
@@ -638,7 +665,9 @@ export function 投影持久化剧情编织系统(system: 剧情编织系统): �
 }
 
 export function buildPersistedStoryWeavingSystem(system: 剧情编织系统): 剧情编织系统 {
-  return 投影持久化剧情编织系统(归一化剧情编织系统(system));
+  // 不再先归一化整份 20MB 系统：投影只抽运行时字段，直接投影即可。
+  // 每回合结算都会走这里，归一化 1908 个完整事件段会成为明显的同步卡顿。
+  return 投影持久化剧情编织系统(system);
 }
 
 export function hydratePersistedStoryWeavingSystem(
