@@ -26,10 +26,6 @@ const FLUSH_RETRY_MS = 3000;
 const PAGE_LIMIT = 50;
 const MAX_PENDING_OPS = 4000;
 const SYNC_MARKER_KEY = 'kty.localSave.syncedDiskUpdatedAt';
-/** 镜像修复版本：与本值不一致时触发一次全量重灌，修补历史遗漏（如 autoIncrement 行未落盘）。
- *  v3：首次升级时把本机 IDB 的全部现存行推上磁盘，修补「存档创建于镜像生效之前」导致的磁盘缺货。 */
-const MIRROR_VERSION_KEY = 'kty.localSave.mirrorVersion';
-const MIRROR_VERSION = '3';
 
 type PutOp = { type: 'put'; value: unknown; key: IDBValidKey };
 type DeleteOp = { type: 'delete'; key: IDBValidKey };
@@ -595,18 +591,6 @@ async function flushAllFromIdb(): Promise<void> {
  * - 其余情况（含未标记的 IDB）保留 IDB，交给镜像把磁盘追平，避免误清更晚的数据。
  * 任何失败都不得阻断启动——本地落盘只是增强，不是运行前提。
  */
-/** 启动兜底：镜像修补/对账这类「增强步骤」绝不允许无限期阻塞界面——超时就放行，下次启动再补。 */
-const BOOT_STEP_TIMEOUT_MS = 30_000;
-
-function 限时<T>(任务: Promise<T>, ms: number, 标签: string): Promise<T> {
-  return Promise.race([
-    任务,
-    new Promise<T>((_, reject) => {
-      setTimeout(() => reject(new Error(`${标签}超时（${ms}ms）`)), ms);
-    }),
-  ]);
-}
-
 export async function bootstrapDiskPersistence(): Promise<void> {
   installDbWriteSink(handleBatch);
   suspended = true;
@@ -643,15 +627,6 @@ export async function bootstrapDiskPersistence(): Promise<void> {
     devLogError('save', 'disk-bootstrap-failed', error);
   } finally {
     suspended = false;
-  }
-  try {
-    if (enabled && readLocalStorage(MIRROR_VERSION_KEY) !== MIRROR_VERSION) {
-      await 限时(flushAllFromIdb(), BOOT_STEP_TIMEOUT_MS, '镜像修补');
-      writeLocalStorage(MIRROR_VERSION_KEY, MIRROR_VERSION);
-      devLog('save', 'disk-mirror-repaired', { version: MIRROR_VERSION });
-    }
-  } catch (error) {
-    devLogError('save', 'disk-mirror-repair-failed', error);
   }
 }
 

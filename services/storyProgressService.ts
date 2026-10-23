@@ -7,25 +7,23 @@ import { 切分中文词 } from '@/utils/chineseSegments';
 import { devLog } from '@/utils/devLog';
 
 export function getCurrentStoryChapterLabel(system: 剧情编织系统): string {
-  const normalized = 归一化剧情编织系统(system);
-  const series = 获取激活剧情系列(normalized);
+  // 这些都是每回合提示词构建高频调用的只读查询；不要再归一化整份 20MB 系统。
+  const series = 获取激活剧情系列(system);
   if (!series || !series.激活注入) return '';
-  const current = getCurrentSegment(series, normalized.当前进度);
+  const current = getCurrentSegment(series, system.当前进度);
   if (!current) return `${series.标题} · 未选择章节`;
-  const chapter = current.章节标题.length ? current.章节标题.join(' / ') : current.标题;
+  const chapter = current.章节标题?.length ? current.章节标题.join(' / ') : current.标题;
   return `${series.标题} · ${chapter}`;
 }
 
 export function 获取当前剧情分段(system: 剧情编织系统): 剧情编织分段 | undefined {
-  const normalized = 归一化剧情编织系统(system);
-  const series = 获取激活剧情系列(normalized);
-  return series ? getCurrentSegment(series, normalized.当前进度) : undefined;
+  const series = 获取激活剧情系列(system);
+  return series ? getCurrentSegment(series, system.当前进度) : undefined;
 }
 
 export function buildStoryAdvanceDeclarationContract(system: 剧情编织系统): string {
-  const normalized = 归一化剧情编织系统(system);
-  const series = 获取激活剧情系列(normalized);
-  const current = series ? getCurrentSegment(series, normalized.当前进度) : undefined;
+  const series = 获取激活剧情系列(system);
+  const current = series ? getCurrentSegment(series, system.当前进度) : undefined;
   if (!series || !series.激活注入 || !current || current.处理状态 !== '已完成') return '';
   // 独立任务不需要“进入下一分段”的申报；完成当前任务后由玩家手动切段。
   if (series.剧情分类 && series.剧情分类 !== '主线') return '';
@@ -69,7 +67,8 @@ export function autoAlignCanonStoryProgress(params: {
   /** 本回合是否在“手动恢复注入”之后产生了新正文；false 时不消费暂停恢复标记。 */
   newBodySinceResume?: boolean;
 }): { system: 剧情编织系统; changed: boolean; progressed: boolean } {
-  const normalizedInput = 归一化剧情编织系统(params.storyWeaving);
+  // 状态本来就已经归一化；每回合再深拷贝 1908 段会周期性顶高内存并触发 GC 卡顿。
+  const normalizedInput = params.storyWeaving;
   const pendingResume = normalizedInput.当前进度?.暂停恢复待判定 === true;
   if (pendingResume && !params.newBodySinceResume) {
     return { system: params.storyWeaving, changed: false, progressed: false };

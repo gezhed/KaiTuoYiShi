@@ -63,7 +63,8 @@ export function PlotPanel({ storyWeaving, onStoryWeavingChange, gameSettings, ap
   const [categoryFilter, setCategoryFilter] = useState<'全部' | 剧情编织分类>('全部');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const normalized = useMemo(() => 归一化剧情编织系统(storyWeaving), [storyWeaving]);
+  // 状态已经是归一化结果；面板每回合都 useMemo 深拷贝 20MB 会周期性顶高内存。
+  const normalized = storyWeaving;
   const canonSeries = useMemo(() => normalized.系列列表.filter((series) => series.来源类型 === 'canon' && series.剧情来源 !== '世界书'), [normalized.系列列表]);
   const worldbookSeries = useMemo(() => normalized.系列列表.filter((series) => series.来源类型 === 'canon' && series.剧情来源 === '世界书'), [normalized.系列列表]);
   const customSeries = useMemo(() => normalized.系列列表.filter((series) => series.来源类型 === 'custom'), [normalized.系列列表]);

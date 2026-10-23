@@ -1,5 +1,4 @@
 import type { 剧情编织历史归档, 剧情编织系统 } from '@/models/storyWeaving';
-import { 归一化剧情编织系统 } from '@/models/storyWeaving';
 import type { 智库条目, 智库系统 } from '@/models/zhiku';
 import { 归一化智库系统, 解析智库软结构标签 } from '@/models/zhiku';
 
@@ -14,8 +13,8 @@ export function applyStoryArchiveZhikuRuntimeUnlock(params: {
   storyWeaving: 剧情编织系统 | undefined;
 }): 智库运行时解锁结果 {
   const zhiku = 归一化智库系统(params.zhiku);
-  const story = 归一化剧情编织系统(params.storyWeaving);
-  const archives = story.当前进度?.历史归档 ?? [];
+  const story = params.storyWeaving;
+  const archives = story?.当前进度?.历史归档 ?? [];
   if (!zhiku.条目.length || !archives.length) {
     return { system: zhiku, changed: false, unlocked: [] };
   }
