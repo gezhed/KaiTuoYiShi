@@ -33,6 +33,7 @@ import {
   stripSaveAssetPayloadForStorage,
   type SaveAssetRecord,
 } from '@/utils/saveAssetStorage';
+import { hasAlbumAssetBlob } from '@/utils/albumObjectUrl';
 import {
   createCatalogRecordFromSummary,
   createHiddenDeltaBaseCatalogRecord,
@@ -245,7 +246,14 @@ export async function loadSave(id: number): Promise<存档数据 | null> {
   }
   const assetIds = collectSaveAlbumAssetIds(saveForAssets);
   if (!assetIds.length) return saveForAssets;
-  const records = materializeSaveAssetRecords(await loadSaveAssetRecords(db, assetIds));
+  /*
+   * 每次 commitTurn 都会 loadSave 当前叶子。相册已有几百张图时，
+   * 每次把全部图片 Blob 从 IDB 读一遍并重新 materialize，会周期性顶高内存并触发 GC 卡顿。
+   * 已在展示缓存（或旁路待落盘）里的资产不必重复读，只补缺的那些。
+   */
+  const missingAssetIds = assetIds.filter((assetId) => !hasAlbumAssetBlob(assetId));
+  if (!missingAssetIds.length) return saveForAssets;
+  const records = materializeSaveAssetRecords(await loadSaveAssetRecords(db, missingAssetIds));
   return restoreSaveAssetPayloadFromRecords(saveForAssets, records);
 }
 
