@@ -653,11 +653,6 @@ export async function bootstrapDiskPersistence(): Promise<void> {
   } catch (error) {
     devLogError('save', 'disk-mirror-repair-failed', error);
   }
-  try {
-    await 限时(对账并补齐磁盘(), BOOT_STEP_TIMEOUT_MS, '对账');
-  } catch (error) {
-    devLogError('save', 'disk-reconcile-failed', error);
-  }
 }
 
 export interface TurnTranscriptInput {
