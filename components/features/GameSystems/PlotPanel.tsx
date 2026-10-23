@@ -423,7 +423,7 @@ export function PlotPanel({ storyWeaving, onStoryWeavingChange, gameSettings, ap
 
   const handleSaveDraft = async (series: 剧情编织系列, segment: 剧情编织分段) => {
     if (!draft) return;
-    const updated = applyDraft(segment, draft);
+    const updated = { ...applyDraft(segment, draft), 本地修改: true };
     if (!await updateSeries(series.id, (s) => ({
       ...s,
       分段列表: s.分段列表.map((item) => item.id === segment.id ? updated : item),
@@ -461,9 +461,10 @@ export function PlotPanel({ storyWeaving, onStoryWeavingChange, gameSettings, ap
         previousSegment: getPreviousCompleted(series, segment),
         promptModules: gameSettings.promptModules,
       });
+      const parsedWithFlag = { ...parsed, 本地修改: true };
       if (!await updateSeries(series.id, (s) => ({
         ...s,
-        分段列表: s.分段列表.map((item) => item.id === segment.id ? parsed : item),
+        分段列表: s.分段列表.map((item) => item.id === segment.id ? parsedWithFlag : item),
         updatedAt: Date.now(),
       }))) return;
       devLog('net', 'story-weaving-decompose-done', { seriesId: series.id, segmentId: segment.id });

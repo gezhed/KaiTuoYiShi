@@ -45,9 +45,10 @@ export async function runBatchDecompose(params: {
         .filter((item) => item.组号 < processingSegment.组号 && item.处理状态 === '已完成')
         .sort((a, b) => b.组号 - a.组号)[0];
       const parsed = await decompose(processingSegment, previousSegment);
+      const parsedWithFlag = { ...parsed, 本地修改: true };
       workingSeries = {
         ...workingSeries,
-        分段列表: workingSeries.分段列表.map((item) => item.id === target.id ? parsed : item),
+        分段列表: workingSeries.分段列表.map((item) => item.id === target.id ? parsedWithFlag : item),
         updatedAt: Date.now(),
       };
     } catch (err) {

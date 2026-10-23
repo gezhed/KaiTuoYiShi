@@ -120,6 +120,8 @@ export interface 剧情编织分段 {
   运行状态: 剧情编织运行状态;
   最近错误?: string;
   updatedAt: number;
+  /** 玩家手动保存或 AI 分解过的分段；持久化时必须保留完整字段，不能只存运行时投影。 */
+  本地修改?: boolean;
   /** 世界书/多轨剧情用的可选检索维度；旧档没有这些字段时按系列继承。 */
   剧情分类?: 剧情编织分类;
   剧情地区?: string;
@@ -781,6 +783,7 @@ export function 归一化剧情编织分段(raw: Partial<剧情编织分段>, in
     运行状态: 归一化运行状态(raw.运行状态),
     最近错误: 读文本(raw.最近错误).trim() || undefined,
     updatedAt: Number(raw.updatedAt) || Date.now(),
+    本地修改: raw.本地修改 === true ? true : undefined,
     剧情分类: 归一化剧情分类(raw.剧情分类),
     剧情地区: 读文本(raw.剧情地区).trim() || undefined,
     剧情版本: 读文本(raw.剧情版本).trim() || undefined,

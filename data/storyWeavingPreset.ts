@@ -636,6 +636,15 @@ export function mergeBundledStoryWeavingPresets(saved: 剧情编织系统 | null
           updatedAt: savedSegment.updatedAt,
         };
       }
+      if (savedSegment.本地修改) {
+        // 玩家手动保存 / AI 分解过的段：完整保留文本与结构化字段。
+        return {
+          ...segment,
+          ...savedSegment,
+          原文内容: savedSegment.原文内容 || segment.原文内容,
+          字数: savedSegment.字数 || segment.字数,
+        };
+      }
       if (persistenceVersion >= 4 || structureChanged || savedLooksProjected) {
         // v4 的 canon 段只保存运行时字段；正文/事件/档案全部从内置资源水合。
         // 不能把 savedSegment 整个 spread 进来，否则归一化补出的空字段会盖掉内置数据。
@@ -707,14 +716,20 @@ export function 投影持久化剧情编织系统(system: 剧情编织系统): �
         来源智库条目ID: [],
         原始文本: undefined,
         章节列表: [],
-        分段列表: series.分段列表.map((segment) => ({
-          id: segment.id,
-          组号: segment.组号,
-          启用注入: segment.启用注入,
-          处理状态: segment.处理状态,
-          运行状态: segment.运行状态,
-          updatedAt: segment.updatedAt,
-        })) as unknown as 剧情编织分段[],
+        分段列表: series.分段列表.map((segment) => {
+          if (segment.本地修改) {
+            // 手动保存/AI 分解过的分段必须完整落库；否则点保存后一刷新就回退成内置版本。
+            return segment;
+          }
+          return {
+            id: segment.id,
+            组号: segment.组号,
+            启用注入: segment.启用注入,
+            处理状态: segment.处理状态,
+            运行状态: segment.运行状态,
+            updatedAt: segment.updatedAt,
+          };
+        }) as unknown as 剧情编织分段[],
       } as unknown as 剧情编织系列;
     }),
     当前系列ID: system.当前系列ID,

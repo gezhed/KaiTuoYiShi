@@ -75,4 +75,21 @@ describe('世界书剧情持久化投影', () => {
     expect(restored?.起始章序号).toBeGreaterThan(0);
     expect(restored?.原文内容.length).toBeGreaterThan(500);
   });
+
+  it('手动保存的分段会完整落库，不会被运行时投影吃掉', () => {
+    const { series, system } = 载入世界书系统();
+    const edited = {
+      ...system,
+      系列列表: [{
+        ...series,
+        分段列表: series.分段列表.map((segment, index) => index === 0
+          ? { ...segment, 本段概括: '手动修改后的概括', 本地修改: true, updatedAt: Date.now() }
+          : segment),
+      }],
+    };
+    const persisted = buildPersistedStoryWeavingSystem(edited as typeof system);
+    const hydrated = hydratePersistedStoryWeavingSystem(persisted, { ...system, 系列列表: [series] });
+    expect(hydrated.系列列表[0]?.分段列表[0]?.本段概括).toBe('手动修改后的概括');
+    expect(hydrated.系列列表[0]?.分段列表[0]?.原文内容.length).toBeGreaterThan(500);
+  });
 });

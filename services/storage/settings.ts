@@ -91,11 +91,10 @@ export async function saveSettings(entries: ReadonlyArray<readonly [string, unkn
   } catch (error) {
     indexedError = error;
   }
-  try {
-    await writeStoreRows('settings', rows);
-  } catch (error) {
+  // 服务端只做异步镜像：绝不阻塞保存按钮。服务端挂起/不可达时，IDB 已经保存成功。
+  void writeStoreRows('settings', rows).catch((error) => {
     devLogError('save', 'settings-disk-mirror-failed', error);
-  }
+  });
   if (indexedError) throw toError(indexedError);
 }
 
@@ -103,7 +102,10 @@ export async function loadSetting<T>(key: string): Promise<T | null> {
   const local = await 读Indexed设置<T>(key);
   if (local !== null) return local;
   try {
-    const row = await readStoreRow<SettingRow<T>>('settings', key);
+    const row = await Promise.race([
+      readStoreRow<SettingRow<T>>('settings', key),
+      new Promise<null>((resolve) => { globalThis.setTimeout(() => resolve(null), 1200); }),
+    ]);
     return row?.value ?? null;
   } catch {
     return null;
@@ -116,9 +118,7 @@ export async function deleteSetting(key: string): Promise<void> {
   } catch (error) {
     devLogError('save', 'settings-indexed-delete-failed', error);
   }
-  try {
-    await deleteStoreRows('settings', [key]);
-  } catch (error) {
+  void deleteStoreRows('settings', [key]).catch((error) => {
     devLogError('save', 'settings-disk-delete-failed', error);
-  }
+  });
 }
