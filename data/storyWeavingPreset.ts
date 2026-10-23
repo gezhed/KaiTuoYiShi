@@ -1,7 +1,8 @@
 import type { 剧情编织分段, 剧情编织系列, 剧情编织系统 } from '@/models/storyWeaving';
 import { 构造剧情编织系列, 构造剧情编织系统, 归一化剧情编织系统, 归一化剧情编织系列 } from '@/models/storyWeaving';
 import type { 开局档案 } from '@/models/world';
-import { loadAllOrThrow, type ResourceProgress } from '@/data/resourceBundle';
+import type { ResourceProgress } from '@/data/resourceBundle';
+import { devLogError } from '@/utils/devLog';
 
 const legacyStoryWeavingPresets: BundledStoryWeavingPreset[] = [
   {
@@ -532,26 +533,71 @@ export function alignStoryWeavingToOpeningArchive(system: 剧情编织系统, ar
 export async function fetchAllBundledStoryWeavingPresetsText(
   onProgress?: ResourceProgress,
 ): Promise<string[]> {
-  return loadAllOrThrow({
-    items: bundledStoryWeavingPresets,
-    fetchOne: fetchCanonSeries,
-    label: (preset) => preset.id,
-    onProgress,
-  });
+  /*
+   * 不能再用 loadAllOrThrow：56 个内置文件里任何一个 404/JSON 损坏，
+   * 整个剧情编织轨道都会变成空白（用户看到的就是「没有内置世界书文件」）。
+   * 单个文件失败只跳过它，其余系列照常显示，并把失败项打到诊断日志。
+   */
+  const total = bundledStoryWeavingPresets.length;
+  const loaded = new Array<string>(total).fill('');
+  let cursor = 0;
+  let done = 0;
+  const failures: string[] = [];
+  const worker = async (): Promise<void> => {
+    while (cursor < total) {
+      const index = cursor;
+      cursor += 1;
+      const preset = bundledStoryWeavingPresets[index];
+      try {
+        loaded[index] = await fetchCanonSeries(preset);
+      } catch (error) {
+        failures.push(`${preset.id}：${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        done += 1;
+        onProgress?.(done, total);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, total) }, () => worker()));
+  if (failures.length) {
+    devLogError('save', 'story-weaving-preset-load-partial', new Error(failures.join('；')), {
+      failed: failures.length,
+      total,
+    });
+  }
+  if (failures.length >= total) {
+    throw new Error(`内置剧情资源全部加载失败（${failures.length}/${total}）：${failures.slice(0, 5).join('；')}`);
+  }
+  return loaded;
 }
 
 export function 加工内置原著系列(texts: readonly string[]): 剧情编织系统 {
-  const series = bundledStoryWeavingPresets.map((preset, index) => 构造CanonSeries(preset, texts[index]));
+  const series: 剧情编织系列[] = [];
+  bundledStoryWeavingPresets.forEach((preset, index) => {
+    const text = texts[index];
+    if (!text) return;
+    try {
+      series.push(构造CanonSeries(preset, text));
+    } catch (error) {
+      devLogError('save', 'story-weaving-preset-parse-failed', error, { presetId: preset.id });
+    }
+  });
   return 构造剧情编织系统({
     系列列表: series,
-    当前系列ID: CANON_START_SERIES_ID,
+    当前系列ID: series.some((item) => item.id === CANON_START_SERIES_ID)
+      ? CANON_START_SERIES_ID
+      : (series[0]?.id ?? CANON_START_SERIES_ID),
   });
 }
 
 export async function loadAllBundledStoryWeavingPresets(
   onProgress?: ResourceProgress,
 ): Promise<剧情编织系统> {
-  return 加工内置原著系列(await fetchAllBundledStoryWeavingPresetsText(onProgress));
+  const system = 加工内置原著系列(await fetchAllBundledStoryWeavingPresetsText(onProgress));
+  if (system.系列列表.length === 0) {
+    throw new Error('内置剧情资源全部加载失败，剧情编织无法启动。');
+  }
+  return system;
 }
 
 type PersistedStoryWeavingSystem = 剧情编织系统 & { persistenceVersion?: number };
