@@ -462,6 +462,27 @@ export function getOpeningStoryWeavingAnchor(chapterId?: string): { seriesId: st
 export function alignStoryWeavingToOpeningArchive(system: 剧情编织系统, archive?: 开局档案): 剧情编织系统 {
   const normalized = 归一化剧情编织系统(system);
   if (!normalized.系列列表.length || !archive) return normalized;
+  /*
+   * 玩家已经在世界书/其它系列上继续游玩时，刷新/读档不能每次又被开局档案拉回原著默认系列。
+   * 只有在“还没有明确当前段”（新局默认状态）或仍停在原著开局第一段时才重新对齐；
+   * 非默认系列、或原著已推进过，一律保留玩家当前选择。
+   */
+  const activeSeriesId = normalized.当前进度?.当前系列ID ?? normalized.当前系列ID;
+  const activeSeries = normalized.系列列表.find((series) => series.id === activeSeriesId);
+  const hasActiveSegment = Boolean(activeSeries?.分段列表.some((segment) => segment.运行状态 === '当前'));
+  const hasProgress = Boolean(
+    normalized.当前进度
+    && (
+      normalized.当前进度.当前分段组号 > 1
+      || normalized.当前进度.历史归档.length > 0
+      || normalized.当前进度.已完成摘要.length > 0
+    )
+  );
+  const 非默认系列有进度 = activeSeriesId !== CANON_START_SERIES_ID
+    && (hasActiveSegment || Boolean(normalized.当前进度));
+  if (非默认系列有进度 || (hasActiveSegment && hasProgress)) {
+    return normalized;
+  }
   if (archive.主线启用 === false) {
     return 归一化剧情编织系统({
       系列列表: normalized.系列列表.map((series) => series.来源类型 === 'canon'

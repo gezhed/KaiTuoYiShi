@@ -172,4 +172,32 @@ describe('翁法罗斯与二相乐园官方开局对齐', () => {
     expect(welcomeSeries.分段列表.filter((segment) => segment.运行状态 === '当前').map((segment) => segment.组号)).toEqual([1]);
     expect(welcomeSeries.分段列表.filter((segment) => segment.运行状态 === '已跳过')).toEqual([]);
   });
+
+  it('玩家已切到世界书系列后，刷新对齐不会自动拉回原著', async () => {
+    const bundled = await loadBundledOnce();
+    const worldbook = bundled.系列列表.find((series) => series.id === 'wb_side_sim');
+    if (!worldbook) throw new Error('缺少世界书模拟宇宙系列');
+    const first = worldbook.分段列表[0];
+    const system: 剧情编织系统 = {
+      ...bundled,
+      当前系列ID: worldbook.id,
+      当前进度: {
+        ...(bundled.当前进度 ?? {}),
+        当前系列ID: worldbook.id,
+        当前分段ID: first.id,
+        当前分段组号: first.组号,
+        推进状态: '推进中',
+        已完成摘要: [],
+        当前待解问题: [],
+        切换说明: [],
+        历史归档: [],
+        最近判定理由: [],
+        updatedAt: 0,
+      } as 剧情编织系统['当前进度'],
+    };
+    const preset = requirePreset('official_amphoreus_falling_wood');
+    const aligned = alignStoryWeavingToOpeningArchive(system, 根据官方开局预设创建开局档案(preset));
+    expect(aligned.当前系列ID).toBe(worldbook.id);
+    expect(aligned.当前进度?.当前系列ID).toBe(worldbook.id);
+  });
 });
