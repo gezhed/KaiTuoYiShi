@@ -39,4 +39,16 @@ describe('世界书剧情持久化投影', () => {
     expect(restored?.本段概括).toBeTruthy();
     expect(restored?.关键事件.length).toBeGreaterThan(0);
   });
+
+  it('旧平铺存档结构不会盖掉新事件树', () => {
+    const { series, system } = 载入世界书系统();
+    const oldSaved = {
+      系列列表: [{ ...series, 分段列表: series.分段列表.slice(0, 1) }],
+      当前系列ID: series.id,
+      当前进度: undefined,
+    } as unknown as Parameters<typeof hydratePersistedStoryWeavingSystem>[0];
+    const hydrated = hydratePersistedStoryWeavingSystem(oldSaved, { ...system, 系列列表: [series] });
+    expect(hydrated.系列列表[0]?.分段列表.length).toBe(series.分段列表.length);
+    expect(hydrated.系列列表[0]?.分段列表.length).toBeGreaterThan(1);
+  });
 });

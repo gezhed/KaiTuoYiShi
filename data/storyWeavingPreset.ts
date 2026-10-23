@@ -611,6 +611,11 @@ export function mergeBundledStoryWeavingPresets(saved: 剧情编织系统 | null
   const mergedCanon = bundled.系列列表.map((presetSeries) => {
     const savedSeries = savedById.get(presetSeries.id);
     if (!savedSeries) return presetSeries;
+    const presetSegmentIds = new Set(presetSeries.分段列表.map((segment) => segment.id));
+    // 旧存档还是 332/375 段的平铺结构时，绝不能把旧分段整个覆盖到新事件树上；
+    // 否则界面看起来永远“没变化”。结构一致时才保留旧的自定义字段。
+    const structureChanged = savedSeries.分段列表.length !== presetSeries.分段列表.length
+      || savedSeries.分段列表.some((segment) => !presetSegmentIds.has(segment.id));
     const savedSegments = new Map(savedSeries.分段列表.map((segment) => [segment.id, segment]));
     const mergedSegments = presetSeries.分段列表.map((segment) => {
       const savedSegment = savedSegments.get(segment.id);
@@ -624,7 +629,7 @@ export function mergeBundledStoryWeavingPresets(saved: 剧情编织系统 | null
           updatedAt: savedSegment.updatedAt,
         };
       }
-      if (persistenceVersion >= 4) {
+      if (persistenceVersion >= 4 || structureChanged) {
         // v4 的 canon 段只保存运行时字段；正文/事件/档案全部从内置资源水合。
         // 不能把 savedSegment 整个 spread 进来，否则归一化补出的空字段会盖掉内置数据。
         return {
@@ -653,7 +658,7 @@ export function mergeBundledStoryWeavingPresets(saved: 剧情编织系统 | null
         updatedAt: Math.max(savedSeries.updatedAt, presetSeries.updatedAt),
       });
     }
-    if (persistenceVersion >= 4) {
+    if (persistenceVersion >= 4 || structureChanged) {
       return 构造剧情编织系列({
         ...presetSeries,
         激活注入: savedSeries.激活注入,
