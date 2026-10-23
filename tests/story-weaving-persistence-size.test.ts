@@ -51,4 +51,28 @@ describe('世界书剧情持久化投影', () => {
     expect(hydrated.系列列表[0]?.分段列表.length).toBe(series.分段列表.length);
     expect(hydrated.系列列表[0]?.分段列表.length).toBeGreaterThan(1);
   });
+
+  it('丢失 persistenceVersion 的投影残体也会补回章节与正文', () => {
+    const { series, system } = 载入世界书系统();
+    const projected = {
+      系列列表: [{
+        ...series,
+        分段列表: series.分段列表.map((segment) => ({
+          id: segment.id,
+          组号: segment.组号,
+          启用注入: segment.启用注入,
+          处理状态: segment.处理状态,
+          运行状态: segment.运行状态,
+          updatedAt: segment.updatedAt,
+        })),
+      }],
+      当前系列ID: series.id,
+      当前进度: undefined,
+    } as unknown as Parameters<typeof hydratePersistedStoryWeavingSystem>[0];
+    const hydrated = hydratePersistedStoryWeavingSystem(projected, { ...system, 系列列表: [series] });
+    const restored = hydrated.系列列表[0]?.分段列表[0];
+    expect(restored?.章节范围).toBeTruthy();
+    expect(restored?.起始章序号).toBeGreaterThan(0);
+    expect(restored?.原文内容.length).toBeGreaterThan(500);
+  });
 });

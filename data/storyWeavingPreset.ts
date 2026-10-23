@@ -616,6 +616,13 @@ export function mergeBundledStoryWeavingPresets(saved: 剧情编织系统 | null
     // 否则界面看起来永远“没变化”。结构一致时才保留旧的自定义字段。
     const structureChanged = savedSeries.分段列表.length !== presetSeries.分段列表.length
       || savedSeries.分段列表.some((segment) => !presetSegmentIds.has(segment.id));
+    // 有些旧存档的 persistenceVersion 丢失/被旧写入覆盖，但分段只剩 id/组号；
+    // 这种投影残缺体也不能整段 spread，否则会把章节范围/起始章序号盖成空，界面就只剩章节壳子。
+    const savedLooksProjected = savedSeries.分段列表.some((segment) => (
+      !String(segment.原文内容 || '').trim()
+      || !String(segment.章节范围 || '').trim()
+      || !segment.起始章序号
+    ));
     const savedSegments = new Map(savedSeries.分段列表.map((segment) => [segment.id, segment]));
     const mergedSegments = presetSeries.分段列表.map((segment) => {
       const savedSegment = savedSegments.get(segment.id);
@@ -629,7 +636,7 @@ export function mergeBundledStoryWeavingPresets(saved: 剧情编织系统 | null
           updatedAt: savedSegment.updatedAt,
         };
       }
-      if (persistenceVersion >= 4 || structureChanged) {
+      if (persistenceVersion >= 4 || structureChanged || savedLooksProjected) {
         // v4 的 canon 段只保存运行时字段；正文/事件/档案全部从内置资源水合。
         // 不能把 savedSegment 整个 spread 进来，否则归一化补出的空字段会盖掉内置数据。
         return {
@@ -658,7 +665,7 @@ export function mergeBundledStoryWeavingPresets(saved: 剧情编织系统 | null
         updatedAt: Math.max(savedSeries.updatedAt, presetSeries.updatedAt),
       });
     }
-    if (persistenceVersion >= 4 || structureChanged) {
+    if (persistenceVersion >= 4 || structureChanged || savedLooksProjected) {
       return 构造剧情编织系列({
         ...presetSeries,
         激活注入: savedSeries.激活注入,
