@@ -103,6 +103,27 @@ export function extractSaveAssetRecords(save: 存档数据): SaveAssetRecord[] {
   return Array.from(records.values());
 }
 
+/*
+ * 已落盘资产 id。每次 saveGame 都把整册相册重新 extract 一遍，
+ * 如果每回合把所有图片 Blob 再 put 回 saveAssets，会触发全量磁盘镜像 base64，
+ * 生图之后就会出现周期性内存冲高。这里只写本次会话还没落盘的资产。
+ */
+const 已落盘资产 = new Set<string>();
+
+export function 标记资产已落盘(records: readonly SaveAssetRecord[]): void {
+  for (const record of records) {
+    if (record.id) 已落盘资产.add(record.id);
+  }
+}
+
+export function 过滤未落盘资产(records: readonly SaveAssetRecord[]): SaveAssetRecord[] {
+  return records.filter((record) => !已落盘资产.has(record.id));
+}
+
+export function 重置已落盘资产标记(): void {
+  已落盘资产.clear();
+}
+
 export function saveHasEmbeddedAssetPayload(save: 存档数据): boolean {
   return Boolean(
     save.相册?.assets.some((asset) => isDataImage(asset.dataUrl) || isDataImage(asset.originalUrl)),

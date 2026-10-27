@@ -258,9 +258,12 @@ function snapshotPending(): PendingSnapshot {
   return { mutation, puts: putsMap, deletes: deletesMap, clears };
 }
 
-function mergeBack(snapshot: PendingSnapshot): void {
-  for (const store of snapshot.clears) pendingClears.add(store);
+function mergeBack(snapshot: PendingSnapshot, skippedStores: ReadonlySet<LocalSaveStoreName> = new Set()): void {
+  for (const store of snapshot.clears) {
+    if (!skippedStores.has(store)) pendingClears.add(store);
+  }
   for (const [store, ops] of snapshot.puts) {
+    if (skippedStores.has(store)) continue;
     const map = ensureStoreMap(store);
     if (!map) continue;
     for (const op of ops) {
@@ -269,6 +272,7 @@ function mergeBack(snapshot: PendingSnapshot): void {
     }
   }
   for (const [store, ops] of snapshot.deletes) {
+    if (skippedStores.has(store)) continue;
     const map = ensureStoreMap(store);
     if (!map) continue;
     for (const op of ops) {
@@ -325,9 +329,15 @@ async function flush(): Promise<void> {
     const data = await response.json() as { updatedAt?: number };
     if (typeof data.updatedAt === 'number') writeSyncMarker(data.updatedAt);
   } catch (error) {
-    mergeBack(snapshot);
-    devLogError('save', 'disk-mirror-flush-failed', error, { pending: pendingOpCount() });
-    scheduleRetry();
+    /*
+     * 资产行是 Blob 转 base64 的大对象。如果服务端拒绝/超时，绝不能把它重新塞回待写队列：
+     * 每 3 秒重试一次就会重新编码全部图片，表现为生图之后周期性内存冲高和卡顿。
+     * 图片字节仍留在 IDB 与独立相册图片库；这里只放弃磁盘镜像中的图片副本。
+     */
+    const droppedAssets = snapshot.puts.has('saveAssets');
+    mergeBack(snapshot, droppedAssets ? new Set<LocalSaveStoreName>(['saveAssets']) : undefined);
+    devLogError('save', 'disk-mirror-flush-failed', error, { pending: pendingOpCount(), droppedAssets });
+    if (pendingOpCount() > 0) scheduleRetry();
   } finally {
     flushing = false;
   }

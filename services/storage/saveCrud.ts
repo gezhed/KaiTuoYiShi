@@ -31,6 +31,8 @@ import {
   restoreSaveAssetPayloadFromRecords,
   saveHasEmbeddedAssetPayload,
   stripSaveAssetPayloadForStorage,
+  标记资产已落盘,
+  过滤未落盘资产,
   type SaveAssetRecord,
 } from '@/utils/saveAssetStorage';
 import { hasAlbumAssetBlob } from '@/utils/albumObjectUrl';
@@ -79,6 +81,9 @@ async function saveGameInternal(data: 存档数据, options?: SaveGameOptions): 
   const sourceData = stripCloudBackupRestoreRuntime(data);
   const db = await openDB();
   const assetRecords = materializeSaveAssetRecords(extractSaveAssetRecords(sourceData));
+  // 已经落过盘的图片不再每回合整册重写：否则生图后每次自动存档都会重新写全部 Blob，
+  // 再被磁盘镜像转成 base64，表现为周期性卡顿。
+  const newAssetRecords = 过滤未落盘资产(assetRecords);
   const storedData = stripSaveAssetPayloadForStorage({
     ...createSaveEnvelope(sourceData).gameData,
     id: sourceData.id,
@@ -96,7 +101,7 @@ async function saveGameInternal(data: 存档数据, options?: SaveGameOptions): 
     const summaryStore = tx.objectStore(SAVE_SUMMARIES_STORE);
     const assetStore = tx.objectStore(SAVE_ASSETS_STORE);
     const deltaStore = tx.objectStore(SAVE_NODE_DELTAS_STORE);
-    for (const record of assetRecords) assetStore.put(record);
+    for (const record of newAssetRecords) assetStore.put(record);
     const initialStoredData = deltaBase
       ? buildDeltaOnlyStoredSave(storedData, deltaBase.baseSaveId)
       : storedData;
@@ -127,6 +132,7 @@ async function saveGameInternal(data: 存档数据, options?: SaveGameOptions): 
     tx.oncomplete = () => resolve({ id: savedId, save: { ...sourceData, id: savedId } });
     tx.onerror = () => reject(toError(tx.error));
   });
+  标记资产已落盘(newAssetRecords);
   return saved.id;
 }
 
@@ -254,6 +260,7 @@ export async function loadSave(id: number): Promise<存档数据 | null> {
   const missingAssetIds = assetIds.filter((assetId) => !hasAlbumAssetBlob(assetId));
   if (!missingAssetIds.length) return saveForAssets;
   const records = materializeSaveAssetRecords(await loadSaveAssetRecords(db, missingAssetIds));
+  标记资产已落盘(records);
   return restoreSaveAssetPayloadFromRecords(saveForAssets, records);
 }
 
@@ -444,6 +451,7 @@ export async function 写入已落盘资产记录(records: SaveAssetRecord[]): P
     tx.onerror = () => reject(toError(tx.error));
     tx.onabort = () => reject(toError(tx.error ?? new Error('写入图片资产事务已中止。')));
   });
+  标记资产已落盘(records);
 }
 
 /**
@@ -464,6 +472,7 @@ export async function 载入全部相册资产(): Promise<number> {
   });
   if (!records.length) return 0;
   materializeSaveAssetRecords(records);
+  标记资产已落盘(records);
   return records.length;
 }
 
