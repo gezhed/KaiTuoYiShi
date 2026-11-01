@@ -89,17 +89,34 @@ export async function 保存相册图片字节(
   }
 }
 
-/** 启动/进档时把所有图片字节读回展示缓存；按 assetId 寻址的相册图即可解析。 */
-export async function 载入全部相册图片字节(): Promise<number> {
+/** 启动/进档时把当前存档引用的图片字节读回展示缓存；按 assetId 寻址的相册图即可解析。 */
+export async function 载入全部相册图片字节(assetIds?: readonly string[]): Promise<number> {
   const db = await openDB();
   if (!db) return 0;
   try {
-    const records = await new Promise<相册图片记录[]>((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readonly');
-      const req = tx.objectStore(STORE_NAME).getAll();
-      req.onsuccess = () => resolve((req.result ?? []) as 相册图片记录[]);
-      req.onerror = () => reject(req.error ?? new Error('读取相册图片库失败'));
-    });
+    const ids = assetIds ? [...new Set(assetIds.filter(Boolean))] : null;
+    if (ids && ids.length === 0) return 0;
+    const records = ids
+      ? await new Promise<相册图片记录[]>((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const found: 相册图片记录[] = [];
+        for (const id of ids) {
+          const req = store.get(id);
+          req.onsuccess = () => {
+            const record = req.result as 相册图片记录 | undefined;
+            if (record) found.push(record);
+          };
+        }
+        tx.oncomplete = () => resolve(found);
+        tx.onerror = () => reject(tx.error ?? new Error('读取相册图片库失败'));
+      })
+      : await new Promise<相册图片记录[]>((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const req = tx.objectStore(STORE_NAME).getAll();
+        req.onsuccess = () => resolve((req.result ?? []) as 相册图片记录[]);
+        req.onerror = () => reject(req.error ?? new Error('读取相册图片库失败'));
+      });
     let loaded = 0;
     for (const record of records) {
       if (!record?.id || !(record.blob instanceof Blob)) continue;
@@ -121,24 +138,39 @@ export async function 载入全部相册图片字节(): Promise<number> {
 export async function 补齐相册图片记录(save: { 相册?: 相册系统 }): Promise<number> {
   const db = await openDB();
   if (!db) return 0;
-  let records: 相册图片记录[] = [];
-  try {
-    records = await new Promise<相册图片记录[]>((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readonly');
-      const req = tx.objectStore(STORE_NAME).getAll();
-      req.onsuccess = () => resolve((req.result ?? []) as 相册图片记录[]);
-      req.onerror = () => reject(req.error ?? new Error('读取相册图片库失败'));
-    });
-  } catch {
-    return 0;
-  }
-  if (!records.length) return 0;
   const album = save.相册 ?? 创建空相册系统();
   const referenced = new Set<string>([
     ...(album.assets ?? []).map((asset) => asset.id),
     ...(album.entries ?? []).map((entry) => entry.assetId),
   ]);
+  // 正常存档按引用取记录；只有相册被旧档冲成空壳时才回退 getAll 恢复。
   const shouldRecoverAll = referenced.size === 0;
+  let records: 相册图片记录[] = [];
+  try {
+    records = await new Promise<相册图片记录[]>((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      if (shouldRecoverAll) {
+        const req = store.getAll();
+        req.onsuccess = () => resolve((req.result ?? []) as 相册图片记录[]);
+        req.onerror = () => reject(req.error ?? new Error('读取相册图片库失败'));
+        return;
+      }
+      const found: 相册图片记录[] = [];
+      for (const id of referenced) {
+        const req = store.get(id);
+        req.onsuccess = () => {
+          const record = req.result as 相册图片记录 | undefined;
+          if (record) found.push(record);
+        };
+      }
+      tx.oncomplete = () => resolve(found);
+      tx.onerror = () => reject(tx.error ?? new Error('读取相册图片库失败'));
+    });
+  } catch {
+    return 0;
+  }
+  if (!records.length) return 0;
   const assets = [...(album.assets ?? [])];
   const entries = [...(album.entries ?? [])];
   let added = 0;

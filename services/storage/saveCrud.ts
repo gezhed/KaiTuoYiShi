@@ -461,15 +461,17 @@ export async function 写入已落盘资产记录(records: SaveAssetRecord[]): P
  * 或相册引用没有写进当前行，图片字节其实还在库里，却因为没被请求而显示空白。
  * 启动/进档时全量载入一次，按 id 寻址的相册引用都能解析。
  */
-export async function 载入全部相册资产(): Promise<number> {
+export async function 载入全部相册资产(assetIds?: readonly string[]): Promise<number> {
   const db = await openDB();
   if (!db.objectStoreNames.contains(SAVE_ASSETS_STORE)) return 0;
-  const records = await new Promise<SaveAssetRecord[]>((resolve, reject) => {
-    const tx = db.transaction(SAVE_ASSETS_STORE, 'readonly');
-    const req = tx.objectStore(SAVE_ASSETS_STORE).getAll();
-    req.onsuccess = () => resolve((req.result ?? []) as SaveAssetRecord[]);
-    req.onerror = () => reject(toError(req.error));
-  });
+  const records = assetIds
+    ? await loadSaveAssetRecords(db, [...new Set(assetIds.filter(Boolean))])
+    : await new Promise<SaveAssetRecord[]>((resolve, reject) => {
+      const tx = db.transaction(SAVE_ASSETS_STORE, 'readonly');
+      const req = tx.objectStore(SAVE_ASSETS_STORE).getAll();
+      req.onsuccess = () => resolve((req.result ?? []) as SaveAssetRecord[]);
+      req.onerror = () => reject(toError(req.error));
+    });
   if (!records.length) return 0;
   materializeSaveAssetRecords(records);
   标记资产已落盘(records);

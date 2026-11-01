@@ -45,6 +45,38 @@ export async function 发布实时事件(载荷: Record<string, unknown>): Promi
   }
 }
 
+/*
+ * 流式正文是累计全文，逐 token 直接发 fetch 会在长回复时堆叠成百上千个请求体，
+ * 每个都带整段文本，极容易把内存顶到数 GB。
+ * 这里做「单飞行 + 最新值」合并：同一时刻最多一个请求，后续只保留最后一版文本。
+ */
+let 流式请求中 = false;
+let 待发布流式文本 = '';
+let 上次发布的流式文本 = '';
+
+async function 冲刷流式预览(): Promise<void> {
+  if (流式请求中) return;
+  流式请求中 = true;
+  try {
+    while (待发布流式文本 && 待发布流式文本 !== 上次发布的流式文本) {
+      const 本次 = 待发布流式文本;
+      待发布流式文本 = '';
+      上次发布的流式文本 = 本次;
+      await 发布实时事件({ kind: 'stream', source: 'host', text: 本次 });
+    }
+  } finally {
+    流式请求中 = false;
+    // 请求期间又有新文本进来时继续，不要丢最后一帧。
+    if (待发布流式文本 && 待发布流式文本 !== 上次发布的流式文本) void 冲刷流式预览();
+  }
+}
+
+export function 发布流式预览(text: string): void {
+  if (!text) return;
+  待发布流式文本 = text;
+  void 冲刷流式预览();
+}
+
 /** 订阅实时事件；返回取消订阅的函数。EventSource 断线会自动重连。 */
 export function 订阅实时事件(收到: (事件: 实时事件) => void): () => void {
   if (typeof EventSource === 'undefined') return () => {};

@@ -33,8 +33,11 @@ function 停止心跳(): void {
 export function 发布实时事件(载荷: Record<string, unknown>): 实时事件 {
   序号 += 1;
   const 事件 = { seq: 序号, ...载荷 } as 实时事件;
-  事件表.push(事件);
-  if (事件表.length > 保留条数) 事件表.splice(0, 事件表.length - 保留条数);
+  // 流式正文是累计全文，回放没有意义且会随回合数平方级膨胀内存；只广播，不入回放表。
+  if (载荷.kind !== 'stream') {
+    事件表.push(事件);
+    if (事件表.length > 保留条数) 事件表.splice(0, 事件表.length - 保留条数);
+  }
   const 帧 = `data: ${JSON.stringify(事件)}\n\n`;
   for (const 响应 of [...订阅者]) {
     try {

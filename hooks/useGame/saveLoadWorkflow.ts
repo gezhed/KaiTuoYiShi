@@ -171,18 +171,36 @@ export function resetWorkflowProjection(
   setStreamingMessage('');
 }
 
+function collectAlbumAssetIds(save: 存档数据): string[] {
+  const ids = new Set<string>();
+  for (const asset of save.相册?.assets ?? []) {
+    if (asset.id) ids.add(asset.id);
+  }
+  for (const entry of save.相册?.entries ?? []) {
+    if (entry.assetId) ids.add(entry.assetId);
+  }
+  for (const message of save.chatHistory ?? []) {
+    for (const image of message.narrativeImages ?? []) {
+      if (typeof image.dataUrl === 'string' && image.dataUrl.startsWith('asset:')) {
+        ids.add(image.dataUrl.slice('asset:'.length));
+      }
+    }
+  }
+  return [...ids];
+}
+
 export async function enterSession(
   state: UseGameStateReturn,
   save: 存档数据,
 ): Promise<void> {
   beginSession(state);
-  // 资产按 asset id 独立存于 saveAssets；先把全部字节载入内存，
-  // 避免当前叶子没引用到、但相册/正文仍按 id 寻址的图片显示为空白。
-  await 载入全部相册资产().catch((error) => {
+  // 只载入当前存档相册引用的图片；历史图片可能有几百张，全量读入会直接顶爆内存。
+  const albumAssetIds = collectAlbumAssetIds(save);
+  await 载入全部相册资产(albumAssetIds).catch((error) => {
     devLogError('save', 'album-assets-hydrate-failed', error);
     return 0;
   });
-  await 载入全部相册图片字节().catch((error) => {
+  await 载入全部相册图片字节(albumAssetIds).catch((error) => {
     devLogError('save', 'album-image-db-hydrate-failed', error);
     return 0;
   });
@@ -284,11 +302,12 @@ export async function bootRestoreFromNewest(state: UseGameStateReturn): Promise<
     }
     const { newest, leaf } = active;
 
-    await 载入全部相册资产().catch((error) => {
+    const albumAssetIds = collectAlbumAssetIds(leaf);
+    await 载入全部相册资产(albumAssetIds).catch((error) => {
       devLogError('save', 'album-assets-hydrate-failed', error);
       return 0;
     });
-    await 载入全部相册图片字节().catch((error) => {
+    await 载入全部相册图片字节(albumAssetIds).catch((error) => {
       devLogError('save', 'album-image-db-hydrate-failed', error);
       return 0;
     });

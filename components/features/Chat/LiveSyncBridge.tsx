@@ -44,6 +44,8 @@ export function LiveSyncBridge({ on追加消息, on远程输入 }: LiveSyncBridg
       if (!回放 && 事件.clientId === 我) return;
 
       if (事件.kind === 'stream' && typeof 事件.text === 'string') {
+        // 回放里的流式正文是历史累计全文，重新灌进预览没有意义，还会瞬间放大内存。
+        if (回放) return;
         流文本.current = 事件.text;
         setStreamingMessage(事件.text);
         return;

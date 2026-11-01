@@ -1,10 +1,10 @@
 import type { 回合快照 } from '@/models/chat';
 import type { 相册系统 } from '@/models/imageGeneration';
 import type { 队列任务记录 } from '@/models/queueTask';
+import type { 剧情编织系统 } from '@/models/storyWeaving';
 import { 创建相册资源引用 } from '@/utils/albumActions';
 import { isDataImageUrl, rememberAlbumAssetFromDataUrl } from '@/utils/albumObjectUrl';
 import { buildPersistedStoryWeavingSystem } from '@/data/storyWeavingPreset';
-import { 归一化剧情编织系统 } from '@/models/storyWeaving';
 import { compactVariableBatchHistory } from '@/utils/longSessionRetention';
 
 const LARGE_TEXT_LIMIT = 8000;
@@ -79,7 +79,7 @@ export function compactPreTurnSnapshot(snapshot: 回合快照): 回合快照 {
     ...snapshot,
     相册: stripAlbumAssetPayload(snapshot.相册 as 相册系统 | undefined),
     剧情编织: snapshot.剧情编织
-      ? buildPersistedStoryWeavingSystem(归一化剧情编织系统(snapshot.剧情编织))
+      ? buildPersistedStoryWeavingSystem(snapshot.剧情编织 as 剧情编织系统)
       : snapshot.剧情编织,
     variableBatches: compactVariableBatchHistory(snapshot.variableBatches as import('@/models/variableCommand').变量命令批次[]),
     queueTasks: compactQueueTasks(snapshot.queueTasks),

@@ -5,7 +5,7 @@ import type { 角色数据结构 } from '@/models/character';
 import type { VisualTextSettings } from '@/models/settings';
 import type { 相册系统 } from '@/models/imageGeneration';
 import { useStreamingMessage } from '@/utils/streamingMessageStore';
-import { 发布实时事件, 是主机端 } from '@/services/localSave/liveSync';
+import { 发布流式预览, 发布实时事件, 是主机端 } from '@/services/localSave/liveSync';
 import type { TurnActionsApi, 回合动作上下文 } from '@/hooks/useGame/turnActionRuntime';
 import { TurnItem } from './TurnItem';
 import { mediumClip } from '@/components/ui/clipPaths';
@@ -173,7 +173,7 @@ export function ChatList({ messages, loading, scrollRef, onEditBody, turnActions
       const 现在 = Date.now();
       if (现在 - 上次广播时刻.current < 120) return;
       上次广播时刻.current = 现在;
-      void 发布实时事件({ kind: 'stream', source: 'host', text: streamingMessage });
+      发布流式预览(streamingMessage);
       return;
     }
     if (loading) {

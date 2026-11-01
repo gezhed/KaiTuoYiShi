@@ -189,6 +189,8 @@ export function NarrativeImageCard({
             <img
               src={imageSrc}
               alt={image.description || typeLabel}
+              loading="lazy"
+              decoding="async"
               onClick={() => set查看大图(true)}
               className="mx-auto block max-w-full cursor-zoom-in rounded"
               style={{ maxHeight: '512px', objectFit: 'contain' }}
