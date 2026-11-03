@@ -451,13 +451,13 @@ function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEd
             手动入口就是一个按钮，始终保留（不再因为已出图而消失）：
             出图与「提示词不满意再来一次」都是它。
           */}
-          {(narrativeImageManualEnabled || snapshotAction?.visible === true) && (
+          {(narrativeImageManualEnabled || snapshotAction?.stopped === true) && (
             <NarrativeImageManualCard
               regenerating={snapshotAction?.running}
               阶段={snapshotAction?.阶段}
               onRegenerate={snapshotRegenerate}
               失败原因={snapshotAction?.detail}
-              重新生成={snapshotAction?.visible === true}
+              重新生成={snapshotAction?.stopped === true}
             />
           )}
         </div>

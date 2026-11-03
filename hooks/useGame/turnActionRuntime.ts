@@ -51,6 +51,8 @@ export interface 回合动作视图 {
   visible: boolean;
   enabled: boolean;
   running: boolean;
+  /** 已主动停止过本轮插图生成：此时才在非手动模式下保留“重新生成”入口。 */
+  stopped?: boolean;
   detail?: string;
   /** LLM 的原始回复；解析失败时用户需要看到模型到底回了什么。 */
   rawText?: string;
@@ -85,16 +87,17 @@ export function 派生回合动作视图(
     回合动作策略表.regenerate_snapshot.taskIds,
     message.id,
   );
-  // 即使停止后已经没有图片，只要这一回合还有对应的插图任务（含 skipped），
-  // 也要保留「重新生成本回合插图」入口。
-  if (images.length > 0 || context.正文生图手动模式 || 最新任务) {
+  const stopped = 最新任务?.status === 'skipped';
+  // 手动模式始终保留入口；自动模式只在生成中（需要停止）或停止后（需要重新生成）保留。
+  if (images.length > 0 || context.正文生图手动模式 || 最新任务?.status === 'pending' || stopped) {
     const running = 最新任务?.status === 'pending'
       || images.some((image) => image.status === 'generating');
     views.regenerate_snapshot = {
       visible: true,
       enabled: !running,
       running,
-      ...(最新任务?.status === 'failed' && 最新任务.detail ? { detail: 最新任务.detail } : {}),
+      ...(stopped ? { stopped: true } : {}),
+      ...((最新任务?.status === 'failed' || stopped) && 最新任务.detail ? { detail: 最新任务.detail } : {}),
       ...(最新任务?.rawText ? { rawText: 最新任务.rawText } : {}),
       // 阶段优先取任务上写明的：图片状态只在「写回消息之后」才可见，
       // 整轮生成期间消息里根本没有 generating 的图，只能靠任务告诉界面。
