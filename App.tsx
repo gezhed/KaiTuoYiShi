@@ -329,7 +329,14 @@ export function App() {
   const 逐句推进 = useMemo(() => ({
     启用: gameSettings.逐句推进?.启用 === true,
     立即全显: gameSettings.逐句推进?.立即全显 === true,
-  }), [gameSettings.逐句推进?.启用, gameSettings.逐句推进?.立即全显]);
+    自动播放: gameSettings.逐句推进?.自动播放 === true,
+    每字毫秒: gameSettings.逐句推进?.每字毫秒 ?? 80,
+  }), [
+    gameSettings.逐句推进?.启用,
+    gameSettings.逐句推进?.立即全显,
+    gameSettings.逐句推进?.自动播放,
+    gameSettings.逐句推进?.每字毫秒,
+  ]);
 
   const turnBusy = state.activeWorkflow.loading || state.activeWorkflow.pendingVariable;
 

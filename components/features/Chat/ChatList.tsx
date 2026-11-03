@@ -20,7 +20,7 @@ interface ChatListProps {
   turnActionContext?: 回合动作上下文;
   narrativeImageManualEnabled?: boolean;
   /** AVG 式逐句推进设置。 */
-  逐句推进?: { 启用: boolean; 立即全显: boolean };
+  逐句推进?: { 启用: boolean; 立即全显: boolean; 自动播放?: boolean; 每字毫秒?: number };
   /** 正文插图的显示方式（默认显示 / 默认展开）。 */
   插图显示?: { 默认显示: boolean; 默认展开: boolean };
   npcRecords?: NPC记录[];
@@ -60,7 +60,7 @@ interface ChatHistoryListProps {
   turnActionContext?: 回合动作上下文;
   narrativeImageManualEnabled?: boolean;
   /** AVG 式逐句推进设置。 */
-  逐句推进?: { 启用: boolean; 立即全显: boolean };
+  逐句推进?: { 启用: boolean; 立即全显: boolean; 自动播放?: boolean; 每字毫秒?: number };
   /** 正文插图的显示方式（默认显示 / 默认展开）。 */
   插图显示?: { 默认显示: boolean; 默认展开: boolean };
   npcRecords?: NPC记录[];
@@ -94,6 +94,10 @@ const ChatHistoryList = memo(function ChatHistoryList({
   onIllustrationRerollPrompts,
 }: ChatHistoryListProps) {
   const lastAssistantIndex = messages.reduce((last, msg, index) => (msg.role === 'assistant' ? index : last), -1);
+  // 鼠标悬停哪一回合，空格/回车和自动播放就归哪一回合；没悬停时回到最新回合。
+  const [悬停消息ID, set悬停消息ID] = useState<string | null>(null);
+  const 悬停下标 = 悬停消息ID ? messages.findIndex((msg) => msg.id === 悬停消息ID) : -1;
+  const 键盘激活下标 = 悬停下标 >= 0 ? 悬停下标 : lastAssistantIndex;
   return (
     <>
       {messages.map((msg, idx) => {
@@ -107,6 +111,10 @@ const ChatHistoryList = memo(function ChatHistoryList({
             key={msg.id}
             message={msg}
             deferOffscreen
+            onPointerEnter={() => set悬停消息ID(msg.id)}
+            键盘激活={idx === 键盘激活下标}
+            自动播放={逐句推进?.自动播放 === true && idx === 键盘激活下标}
+            每字毫秒={逐句推进?.每字毫秒}
             onEditBody={onEditBody}
             turnActionView={actionView}
             onTurnAction={hasActions && turnActions && turnActionContext
@@ -115,7 +123,6 @@ const ChatHistoryList = memo(function ChatHistoryList({
             narrativeImageManualEnabled={narrativeImageManualEnabled}
             插图显示={插图显示}
         逐句推进={逐句推进}
-            键盘激活={idx === lastAssistantIndex}
             npcRecords={npcRecords}
             traveler={traveler}
             album={album}

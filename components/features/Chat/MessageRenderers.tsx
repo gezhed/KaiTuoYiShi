@@ -27,11 +27,15 @@ interface BodyBlockProps {
   /** 渲染一张插图卡片；返回 null 表示这张不渲染。 */
   renderIllustration?: (插图Id: string) => ReactNode;
   /** AVG 式逐句推进设置；不传即关闭，行为与原来一致。 */
-  逐句推进?: { 启用: boolean; 立即全显: boolean };
+  逐句推进?: { 启用: boolean; 立即全显: boolean; 自动播放?: boolean; 每字毫秒?: number };
   /** 流式生成中：句子还在变，逐句推进没有意义，强制全显。 */
   生成中?: boolean;
-  /** 只有最新回合响应空格/回车；避免历史回合跟着一起前进。 */
+  /** 只有鼠标所在/最新回合响应空格/回车；避免历史回合跟着一起前进。 */
   键盘激活?: boolean;
+  /** 自动播放当前段。 */
+  自动播放?: boolean;
+  /** 自动播放每个字的毫秒数。 */
+  每字毫秒?: number;
 }
 
 const DEFERRED_NARRATION_STYLE = {
@@ -462,7 +466,7 @@ export const NarrationLine = memo(function NarrationLine({ text, fontSize = 15, 
   );
 });
 
-export function BodyBlock({ content, npcRecords, traveler, album, showInnerVoice = true, userInput, visualTextSettings, deferOffscreen = false, 行间插图, renderIllustration, 逐句推进, 生成中 = false, 键盘激活 = true }: BodyBlockProps) {
+export function BodyBlock({ content, npcRecords, traveler, album, showInnerVoice = true, userInput, visualTextSettings, deferOffscreen = false, 行间插图, renderIllustration, 逐句推进, 生成中 = false, 键盘激活 = true, 自动播放 = false, 每字毫秒 }: BodyBlockProps) {
   const lines = useMemo(() => (content ? parseBodyLines(content, traveler, userInput) : []), [content, traveler, userInput]);
   const fontSettings = useMemo(() => normalizeVisualTextSettings(visualTextSettings), [visualTextSettings]);
   const npcMap = useMemo(() => buildNpcLookupMap(npcRecords), [npcRecords]);
@@ -482,6 +486,8 @@ export function BodyBlock({ content, npcRecords, traveler, album, showInnerVoice
     立即全显: 逐句推进?.立即全显 === true,
     生成中,
     键盘激活,
+    自动播放,
+    每字毫秒,
   });
 
   /**

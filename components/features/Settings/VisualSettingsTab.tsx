@@ -14,7 +14,7 @@ const RANGE_MAX = 30;
 
 export function VisualSettingsTab({ settings, onChange }: Props) {
   const visual = 归一化视觉文本设置(settings.visualTextSettings);
-  const 逐段 = settings.逐句推进 ?? { 启用: false, 立即全显: false };
+  const 逐段 = settings.逐句推进 ?? { 启用: false, 立即全显: false, 自动播放: false, 每字毫秒: 80 };
 
   const update = (patch: Partial<VisualTextSettings>) => {
     onChange({
@@ -118,6 +118,36 @@ export function VisualSettingsTab({ settings, onChange }: Props) {
           checked={逐段.立即全显}
           onChange={(值) => 更新逐段({ 立即全显: 值 })}
         />
+        <开关行
+          label="自动播放"
+          desc="当前段显示完后，按本段字数 × 每字速度自动前进；鼠标停在哪一回合，就自动播放哪一回合。"
+          checked={逐段.自动播放 === true}
+          onChange={(值) => 更新逐段({ 自动播放: 值 })}
+        />
+        {逐段.自动播放 === true && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 px-1">
+            <span className="text-xs" style={{ color: 'rgba(var(--tj-text-secondary), 0.78)' }}>每字速度</span>
+            <input
+              type="range"
+              min={10}
+              max={300}
+              step={5}
+              value={逐段.每字毫秒 ?? 80}
+              onChange={(事件) => 更新逐段({ 每字毫秒: Number(事件.target.value) })}
+              className="min-w-0 flex-1"
+            />
+            <input
+              type="number"
+              min={10}
+              max={2000}
+              step={5}
+              value={逐段.每字毫秒 ?? 80}
+              onChange={(事件) => 更新逐段({ 每字毫秒: Math.max(10, Math.min(2000, Number(事件.target.value) || 80)) })}
+              className="kaituo-input w-20 px-2 py-1 text-xs"
+            />
+            <span className="text-xs" style={{ color: 'rgba(var(--tj-text-secondary), 0.6)' }}>毫秒/字</span>
+          </div>
+        )}
       </section>
 
       <section

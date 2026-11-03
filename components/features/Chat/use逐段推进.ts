@@ -23,8 +23,12 @@ export interface 逐段推进参数 {
   立即全显?: boolean;
   /** 流式生成中不启用：段落还在变，逐段推进没有意义。 */
   生成中?: boolean;
-  /** 只有当前/最新回合响应全局键盘；否则多个回合的 BodyBlock 会同时前进。 */
+  /** 只有鼠标所在/最新回合响应全局键盘；否则多个回合的 BodyBlock 会同时前进。 */
   键盘激活?: boolean;
+  /** 自动播放：当前段显示完后按字数延迟前进。 */
+  自动播放?: boolean;
+  /** 自动播放每个字停留的毫秒数。 */
+  每字毫秒?: number;
 }
 
 export interface 逐段推进状态 {
@@ -101,6 +105,8 @@ export function use逐段推进({
   立即全显 = false,
   生成中 = false,
   键盘激活 = true,
+  自动播放 = false,
+  每字毫秒 = 80,
 }: 逐段推进参数): 逐段推进状态 {
   const 生效 = 启用 && !生成中 && !立即全显;
   const 段落 = useMemo(() => 切分段落(行), [行]);
@@ -170,6 +176,21 @@ export function use逐段推进({
   }, [生效, 前进, 键盘激活]);
 
   const 当前段 = 段落[Math.min(段序号, Math.max(0, 段总数 - 1))];
+  const 当前段字符数 = 当前段
+    ? 行.slice(当前段.起, 当前段.止).reduce((总数, 行项) => {
+      const 文本 = (行项 as { text?: string }).text ?? '';
+      return 总数 + Array.from(文本).length;
+    }, 0)
+    : 0;
+  const 自动延迟 = Math.max(600, Math.round(当前段字符数 * Math.max(10, Math.min(2000, 每字毫秒))));
+
+  useEffect(() => {
+    if (!生效 || !自动播放 || 段序号 >= 段总数 - 1) return undefined;
+    if (typeof document !== 'undefined' && document.hidden) return undefined;
+    const 定时器 = globalThis.setTimeout(() => 前进(), 自动延迟);
+    return () => globalThis.clearTimeout(定时器);
+  }, [生效, 自动播放, 段序号, 段总数, 自动延迟, 前进]);
+
   const 可见区间 = !生效
     ? { 起: 0, 止: 行.length }
     // 未启用或段落切不出来时退回全篇，避免整块空白。

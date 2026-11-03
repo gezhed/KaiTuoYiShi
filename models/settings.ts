@@ -190,6 +190,10 @@ export interface 逐句推进设置 {
   启用: boolean;
   /** 一次性把本回合全部展开（跳过逐句）。 */
   立即全显: boolean;
+  /** 自动播放：当前段显示完后按字数延迟自动前进。 */
+  自动播放: boolean;
+  /** 自动播放每个字停留的毫秒数。 */
+  每字毫秒: number;
 }
 
 export interface 游戏设置 {
@@ -883,7 +887,7 @@ export function 创建默认游戏设置(): 游戏设置 {
     文生图系统: 创建默认文生图系统设置(),
     记忆系统: 创建默认记忆系统设置(),
     // 默认关闭：改成逐句推进是阅读习惯的改变，不该替用户决定。
-    逐句推进: { 启用: false, 立即全显: false },
+    逐句推进: { 启用: false, 立即全显: false, 自动播放: false, 每字毫秒: 80 },
     variableApi: 创建空变量API覆盖(),
     variableUpdateRequireConfirm: false,
     customPrompt: '',

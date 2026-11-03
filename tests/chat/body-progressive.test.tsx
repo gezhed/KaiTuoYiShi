@@ -5,9 +5,11 @@
  * 之前只测了 hook 本身，结果接进组件后整体失效 —— 用户看到「全部文本都显示了」。
  * 所以这里直接渲染 BodyBlock，检查真正落到屏幕上的行。
  */
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, render, screen, fireEvent } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BodyBlock } from '@/components/features/Chat/MessageRenderers';
+
+afterEach(() => { vi.useRealTimers(); });
 
 const 正文 = [
   '第一段旁白内容。',
@@ -177,5 +179,22 @@ describe('插图固定在上方', () => {
     fireEvent.keyDown(document, { key: ' ' });
     expect(screen.getByText(/当前二/)).toBeInTheDocument();
     expect(screen.queryByText(/历史二/)).not.toBeInTheDocument();
+  });
+
+  it('自动播放按每段字数 × 每字毫秒自动前进', () => {
+    vi.useFakeTimers();
+    render(
+      <BodyBlock
+        content={'一二三\n四五六'}
+        逐句推进={{ 启用: true, 立即全显: false, 自动播放: true, 每字毫秒: 100 }}
+        自动播放
+        每字毫秒={100}
+      />,
+    );
+    expect(screen.getByText(/一二三/)).toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(599); });
+    expect(screen.getByText(/一二三/)).toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(screen.getByText(/四五六/)).toBeInTheDocument();
   });
 });
