@@ -298,6 +298,7 @@ export function NarrativeImageManualCard({
   onRegenerate,
   失败原因,
   阶段,
+  重新生成 = false,
 }: {
   regenerating?: boolean;
   onRegenerate?: () => void;
@@ -305,11 +306,13 @@ export function NarrativeImageManualCard({
   失败原因?: string;
   /** 当前阶段：等 LLM 写提示词，还是正在逐张出图。 */
   阶段?: '等提示词' | '出图中';
+  /** 本回合已经生成/停止过，按钮文案用“重新生成”。 */
+  重新生成?: boolean;
 }) {
   const canGenerate = !!onRegenerate && !regenerating;
   const 文案 = regenerating
     ? (阶段 === '出图中' ? '正在逐张生成图片…' : '正在等待 LLM 写提示词…')
-    : '生成本回合插图';
+    : (重新生成 ? '重新生成本回合插图' : '生成本回合插图');
 
   return (
     <div>

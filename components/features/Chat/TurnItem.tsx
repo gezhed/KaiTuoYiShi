@@ -457,6 +457,7 @@ function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEd
               阶段={snapshotAction?.阶段}
               onRegenerate={snapshotRegenerate}
               失败原因={snapshotAction?.detail}
+              重新生成={snapshotAction?.visible === true}
             />
           )}
         </div>
