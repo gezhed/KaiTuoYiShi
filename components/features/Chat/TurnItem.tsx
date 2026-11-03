@@ -390,6 +390,7 @@ function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEd
         || (narrativeImageManualEnabled && !isStreaming)
         || (onIllustrationRegenerateAll && (message.narrativeImages?.length ?? 0) > 0)
         || (插图运行中 && Boolean(onStopIllustration))
+        || snapshotAction?.visible === true
       ) && (
         <div className="px-1 py-2 space-y-2">
           {插图运行中 && onStopIllustration ? (
@@ -450,7 +451,7 @@ function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEd
             手动入口就是一个按钮，始终保留（不再因为已出图而消失）：
             出图与「提示词不满意再来一次」都是它。
           */}
-          {narrativeImageManualEnabled && (
+          {(narrativeImageManualEnabled || snapshotAction?.visible === true) && (
             <NarrativeImageManualCard
               regenerating={snapshotAction?.running}
               阶段={snapshotAction?.阶段}

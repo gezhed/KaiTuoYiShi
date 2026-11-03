@@ -80,12 +80,14 @@ export function 派生回合动作视图(
   const views: Partial<Record<回合动作ID, 回合动作视图>> = {};
 
   const images: 叙事插图[] = message.narrativeImages ?? [];
-  if (images.length > 0 || context.正文生图手动模式) {
-    const 最新任务 = 查询最新动作任务(
-      context.queueTasks,
-      回合动作策略表.regenerate_snapshot.taskIds,
-      message.id,
-    );
+  const 最新任务 = 查询最新动作任务(
+    context.queueTasks,
+    回合动作策略表.regenerate_snapshot.taskIds,
+    message.id,
+  );
+  // 即使停止后已经没有图片，只要这一回合还有对应的插图任务（含 skipped），
+  // 也要保留「重新生成本回合插图」入口。
+  if (images.length > 0 || context.正文生图手动模式 || 最新任务) {
     const running = 最新任务?.status === 'pending'
       || images.some((image) => image.status === 'generating');
     views.regenerate_snapshot = {
