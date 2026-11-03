@@ -84,10 +84,10 @@ describe('旧存档水合（纯边界）', () => {
     expect(hydrated.settings.记忆系统.记忆阈值契约版本).toBe(当前默认.记忆阈值契约版本);
   });
 
-  it('缺正文格式校验字段的旧档回落默认关闭', () => {
+  it('缺正文格式校验字段的旧档回落默认关闭，标签保留默认值', () => {
     const hydrated = hydratePersistedGameSettings({});
     expect(hydrated.settings.enableResponseFormatCheck).toBe(false);
-    expect(hydrated.settings.responseFormatRequiredTags).toBe('');
+    expect(hydrated.settings.responseFormatRequiredTags).toContain('<正文>');
 
     const normalized = 归一化游戏设置({
       ...默认,

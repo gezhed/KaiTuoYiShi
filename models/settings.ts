@@ -891,7 +891,7 @@ export function 创建默认游戏设置(): 游戏设置 {
     enableCotFakeHistory: true,
     enableTagRepair: true,
     enableResponseFormatCheck: false,
-    responseFormatRequiredTags: '',
+    responseFormatRequiredTags: '<正文>\n<短期记忆>\n<动态世界>\n<变量草稿>',
     autoRetryOnError: true,
     autoRetryCount: 2,
     enableAutoSaveEveryTurn: true,

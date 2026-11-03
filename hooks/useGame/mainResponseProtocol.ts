@@ -8,6 +8,10 @@ export const DEEPSEEK_MAIN_FORMAT_GUARD = [
   '不要在标签外输出解释、道歉、说明或额外标题。',
 ].join('\n');
 
+/** 默认格式校验标签；用户开关打开但没填标签时也按这套检查，避免“开了等于没开”。 */
+export const DEFAULT_REQUIRED_RESPONSE_TAGS = ['正文', '短期记忆', '动态世界', '变量草稿'];
+export const DEFAULT_REQUIRED_RESPONSE_TAGS_TEXT = '<正文>\n<短期记忆>\n<动态世界>\n<变量草稿>';
+
 export function formatOriginalProtagonistForOpening(originalProtagonist: 世界状态['原著主角']): string {
   if (originalProtagonist === '星') return '原作主角星';
   if (originalProtagonist === '穹') return '原作主角穹';
@@ -71,6 +75,15 @@ export function buildRequiredTagRetryGuard(missingTags: readonly string[]): stri
     `缺少：${标签串}。`,
     '请完全重写本回合回复，保留已发生的剧情事实，不要只补标签、不要续写上一版残缺输出。',
     `重写后必须包含：${标签串}；这些标签要作为顶层标签出现，标签外不要写解释或道歉。`,
+  ].join('\n');
+}
+
+export function buildOutputTruncatedRetryGuard(finishReason: string): string {
+  return [
+    '正文格式自动重试：上一版输出因长度上限被截断。',
+    `finishReason=${finishReason}。`,
+    '请完全重写本回合回复：保留已发生事实，压缩重复描写，确保正文完整收束，并在正文后完整输出所有必需标签。',
+    '不要把结尾停在半句话，不要输出“未完待续”。',
   ].join('\n');
 }
 

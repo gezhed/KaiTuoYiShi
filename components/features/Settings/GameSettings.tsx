@@ -410,7 +410,13 @@ export function GameSettingsTab({ settings, onChange, worldState, onWorldStateCh
         label="正文格式自动重试"
         desc="按下方填写的必需标签检查 AI 原始输出；缺少任一标签时自动整段重写，避免正文格式残缺还继续游玩。"
         checked={settings.enableResponseFormatCheck}
-        onChange={(v) => onChange({ ...settings, enableResponseFormatCheck: v })}
+        onChange={(v) => onChange({
+          ...settings,
+          enableResponseFormatCheck: v,
+          responseFormatRequiredTags: v && !settings.responseFormatRequiredTags.trim()
+            ? '<正文>\n<短期记忆>\n<动态世界>\n<变量草稿>'
+            : settings.responseFormatRequiredTags,
+        })}
       />
       {settings.enableResponseFormatCheck && (
         <Field label="◆ 必需 XML 标签（每行一个，逗号也可以）">
@@ -423,7 +429,7 @@ export function GameSettingsTab({ settings, onChange, worldState, onWorldStateCh
             style={{ clipPath: smallClip }}
           />
           <p className="mt-1.5 text-[11px] leading-relaxed" style={{ color: 'rgba(var(--tj-text-secondary), 0.65)' }}>
-            只检查原始输出里有没有这些开标签；带不带尖括号都行，留空则不校验。格式缺失时至少自动重写一次；开启「生成失败自动重试」后按上面的次数上限重试。
+            只检查原始输出里有没有这些开标签；带不带尖括号都行。留空时默认检查正文、短期记忆、动态世界、变量草稿。格式缺失时至少自动重写一次；开启「生成失败自动重试」后按上面的次数上限重试。
           </p>
         </Field>
       )}

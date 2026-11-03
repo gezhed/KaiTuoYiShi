@@ -9,7 +9,9 @@ import { calculateRerollSimilarity } from './workflowRetry';
 import {
   buildDeepSeekProtocolRetryGuard,
   buildRequiredTagRetryGuard,
+  buildOutputTruncatedRetryGuard,
   getDeepSeekMainProtocolIssues,
+  DEFAULT_REQUIRED_RESPONSE_TAGS,
   取缺失必需标签,
   解析必需标签,
 } from './mainResponseProtocol';
@@ -50,12 +52,14 @@ export async function stage4_aiRequest(
   const configuredMaxAttempts = state.deviceSettings.gameSettings.autoRetryOnError
     ? Math.max(1, state.deviceSettings.gameSettings.autoRetryCount) + 1
     : 1;
-  const 格式校验标签 = 解析必需标签(state.deviceSettings.gameSettings.responseFormatRequiredTags);
-  const 格式校验启用 = state.deviceSettings.gameSettings.enableResponseFormatCheck
-    && 格式校验标签.length > 0;
+  const 用户格式标签 = 解析必需标签(state.deviceSettings.gameSettings.responseFormatRequiredTags);
+  // 开关打开但标签框为空时使用默认主剧情标签，避免“功能开了却完全不校验”。
+  const 格式校验标签 = 用户格式标签.length ? 用户格式标签 : DEFAULT_REQUIRED_RESPONSE_TAGS;
+  const 格式校验启用 = state.deviceSettings.gameSettings.enableResponseFormatCheck;
+  const 请求上限 = Math.max(configuredMaxAttempts, maxAttempts ?? 1);
   const calcMaxAttempts = (deepSeekMainActive || deps.rerollContext || 格式校验启用)
-    ? Math.max(2, maxAttempts ?? configuredMaxAttempts)
-    : (maxAttempts ?? configuredMaxAttempts);
+    ? Math.max(2, 请求上限)
+    : 请求上限;
 
   let streamedText = '';
   let streamEventCount = 0;
@@ -154,6 +158,28 @@ export async function stage4_aiRequest(
         throw new Error('AI response was empty');
       }
 
+      const finishReason = result.finishReason ?? '';
+      const outputTruncated = /length|max[_-]?tokens?|max[_-]?output/i.test(finishReason);
+      if (outputTruncated) {
+        void appendApiErrorReport({
+          source: '正文格式校验',
+          config: mainStoryConfig,
+          requestMode: mainRequestMode ?? 'non-stream',
+          error: new Error(`主剧情第 ${attempt}/${calcMaxAttempts} 次输出被长度上限截断（finishReason=${finishReason}）。`),
+          responseText: result.fullText || streamedText || '（空响应）',
+        });
+        if (attempt < calcMaxAttempts) {
+          apiMessages.push(创建聊天消息('user', buildOutputTruncatedRetryGuard(finishReason)));
+          pushQueueTask(state, 'main_story', 'pending', {
+            detail: '正文被长度上限截断，正在要求模型压缩重写。',
+            failCount: attempt, retrying: true, cancellable: true,
+          }, turnCountAtStart, queueTasksMirror);
+          console.warn(`[sendWorkflow] 第 ${attempt}/${calcMaxAttempts} 次输出被截断，自动重写：`, finishReason);
+          continue;
+        }
+        throw new Error(`AI 输出在长度上限处被截断，已重试 ${attempt} 次仍未完整收束（finishReason=${finishReason}）。请提高最大输出或换用支持更长输出的模型。`);
+      }
+
       const rerollSimilarity = deps.rerollContext
         ? calculateRerollSimilarity(candidateText, deps.rerollContext.previousResponse)
         : 0;
@@ -210,6 +236,9 @@ export async function stage4_aiRequest(
           }, turnCountAtStart, queueTasksMirror);
           console.warn(`[sendWorkflow] 第 ${attempt}/${calcMaxAttempts} 次输出格式不完整，自动重写：`, issues);
           continue;
+        }
+        if (格式校验启用 && formatIssues.length > 0) {
+          throw new Error(`AI 输出缺少必需标签（${formatIssues.map((tag) => `<${tag}>`).join('、')}），已重试 ${attempt} 次仍未完整。请检查模型是否遵守预设格式，或调高最大输出。`);
         }
       } else if (deepSeekMainActive) {
         deepSeekProtocolIssuesForTurn = [];
