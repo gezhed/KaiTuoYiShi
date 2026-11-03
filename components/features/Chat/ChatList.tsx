@@ -115,7 +115,7 @@ const ChatHistoryList = memo(function ChatHistoryList({
             narrativeImageManualEnabled={narrativeImageManualEnabled}
             插图显示={插图显示}
         逐句推进={逐句推进}
-            键盘激活={!loading && idx === lastAssistantIndex}
+            键盘激活={idx === lastAssistantIndex}
             npcRecords={npcRecords}
             traveler={traveler}
             album={album}

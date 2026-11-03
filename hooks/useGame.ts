@@ -1125,7 +1125,7 @@ export function useGame(): UseGameReturn {
     let 相册 = stateRef.current.相册;
     for (const 原插图 of 原图) {
       try {
-        const 结果 = await 重生成消息单张插图(stateRef.current, 原插图);
+        const 结果 = await 重生成消息单张插图({ ...stateRef.current, 相册 }, 原插图);
         相册 = 结果.相册;
         新增条目.push(...结果.新增条目);
         新图.push(结果.插图);
