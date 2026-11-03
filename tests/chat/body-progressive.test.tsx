@@ -166,4 +166,16 @@ describe('插图固定在上方', () => {
     expect(screen.getByText(/第三句出现了画面/)).toBeInTheDocument();
     expect(screen.getByTestId('插图-图A')).toBeInTheDocument();
   });
+
+  it('空格只推进当前激活的回合，不会让历史回合一起前进', () => {
+    render(
+      <>
+        <BodyBlock content={'当前一。\n当前二。'} 逐句推进={{ 启用: true, 立即全显: false }} 键盘激活 />
+        <BodyBlock content={'历史一。\n历史二。'} 逐句推进={{ 启用: true, 立即全显: false }} 键盘激活={false} />
+      </>,
+    );
+    fireEvent.keyDown(document, { key: ' ' });
+    expect(screen.getByText(/当前二/)).toBeInTheDocument();
+    expect(screen.queryByText(/历史二/)).not.toBeInTheDocument();
+  });
 });

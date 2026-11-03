@@ -436,6 +436,18 @@ export function App() {
             );
           });
         }}
+        onIllustrationRegenerateAll={(messageId) => actions.handleRegenerateAllIllustrations(messageId).catch((错误) => {
+          pushQueueTask(
+            state,
+            'narrative_image_generate',
+            'failed',
+            {
+              detail: `全部插图重新生成失败：${错误 instanceof Error ? 错误.message : String(错误)}`,
+              targetMessageId: messageId,
+            },
+            state.turnCount,
+          );
+        })}
         onIllustrationRerollPrompts={(messageId) => {
           void actions.handleRerollIllustrationPrompts(messageId).catch((错误) => {
             pushQueueTask(

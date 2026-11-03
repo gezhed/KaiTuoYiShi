@@ -23,6 +23,8 @@ export interface 逐段推进参数 {
   立即全显?: boolean;
   /** 流式生成中不启用：段落还在变，逐段推进没有意义。 */
   生成中?: boolean;
+  /** 只有当前/最新回合响应全局键盘；否则多个回合的 BodyBlock 会同时前进。 */
+  键盘激活?: boolean;
 }
 
 export interface 逐段推进状态 {
@@ -98,6 +100,7 @@ export function use逐段推进({
   启用,
   立即全显 = false,
   生成中 = false,
+  键盘激活 = true,
 }: 逐段推进参数): 逐段推进状态 {
   const 生效 = 启用 && !生成中 && !立即全显;
   const 段落 = useMemo(() => 切分段落(行), [行]);
@@ -152,7 +155,7 @@ export function use逐段推进({
 
   // 空格 / 回车前进；输入框里打字时让位，否则打不出空格。
   useEffect(() => {
-    if (!生效) return undefined;
+    if (!生效 || !键盘激活) return undefined;
     const 处理按键 = (事件: KeyboardEvent) => {
       const 目标 = 事件.target as HTMLElement | null;
       const 标签 = 目标?.tagName;
@@ -164,7 +167,7 @@ export function use逐段推进({
     };
     globalThis.addEventListener('keydown', 处理按键);
     return () => globalThis.removeEventListener('keydown', 处理按键);
-  }, [生效, 前进]);
+  }, [生效, 前进, 键盘激活]);
 
   const 当前段 = 段落[Math.min(段序号, Math.max(0, 段总数 - 1))];
   const 可见区间 = !生效

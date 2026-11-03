@@ -30,6 +30,8 @@ interface BodyBlockProps {
   逐句推进?: { 启用: boolean; 立即全显: boolean };
   /** 流式生成中：句子还在变，逐句推进没有意义，强制全显。 */
   生成中?: boolean;
+  /** 只有最新回合响应空格/回车；避免历史回合跟着一起前进。 */
+  键盘激活?: boolean;
 }
 
 const DEFERRED_NARRATION_STYLE = {
@@ -460,7 +462,7 @@ export const NarrationLine = memo(function NarrationLine({ text, fontSize = 15, 
   );
 });
 
-export function BodyBlock({ content, npcRecords, traveler, album, showInnerVoice = true, userInput, visualTextSettings, deferOffscreen = false, 行间插图, renderIllustration, 逐句推进, 生成中 = false }: BodyBlockProps) {
+export function BodyBlock({ content, npcRecords, traveler, album, showInnerVoice = true, userInput, visualTextSettings, deferOffscreen = false, 行间插图, renderIllustration, 逐句推进, 生成中 = false, 键盘激活 = true }: BodyBlockProps) {
   const lines = useMemo(() => (content ? parseBodyLines(content, traveler, userInput) : []), [content, traveler, userInput]);
   const fontSettings = useMemo(() => normalizeVisualTextSettings(visualTextSettings), [visualTextSettings]);
   const npcMap = useMemo(() => buildNpcLookupMap(npcRecords), [npcRecords]);
@@ -479,6 +481,7 @@ export function BodyBlock({ content, npcRecords, traveler, album, showInnerVoice
     启用: 逐句推进?.启用 === true,
     立即全显: 逐句推进?.立即全显 === true,
     生成中,
+    键盘激活,
   });
 
   /**

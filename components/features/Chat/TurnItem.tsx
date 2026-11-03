@@ -30,6 +30,8 @@ interface TurnItemProps {
   narrativeImageManualEnabled?: boolean;
   /** AVG 式逐句推进设置。 */
   逐句推进?: { 启用: boolean; 立即全显: boolean };
+  /** 只有最新回合响应键盘推进，避免历史回合同时前进。 */
+  键盘激活?: boolean;
   /** 正文插图的显示方式（默认显示 / 默认展开）。 */
   插图显示?: { 默认显示: boolean; 默认展开: boolean };
   npcRecords?: NPC记录[];
@@ -43,6 +45,7 @@ interface TurnItemProps {
   // 历史消息可能没有 awakenPathId，由 ChatList 向前查找补齐。
   fallbackPathId?: string;
   onIllustrationRegenerate?: (messageId: string, 插图: 叙事插图, 选项?: 插图重生选项) => void;
+  onIllustrationRegenerateAll?: (messageId: string) => void | Promise<unknown>;
   onIllustrationRerollPrompts?: (messageId: string) => void;
 }
 
@@ -53,7 +56,7 @@ const HISTORY_TURN_VISIBILITY_STYLE = {
   containIntrinsicSize: 'auto 640px',
 } as const;
 
-function TurnItemImpl({ message, isStreaming, deferOffscreen = false, onEditBody, turnActionView, onTurnAction, narrativeImageManualEnabled = false, 插图显示, 逐句推进, npcRecords, traveler, album, showInnerVoice = true, fallbackPathId, previousUserInput, visualTextSettings, devMode = false, onIllustrationRegenerate, onIllustrationRerollPrompts }: TurnItemProps) {
+function TurnItemImpl({ message, isStreaming, deferOffscreen = false, onEditBody, turnActionView, onTurnAction, narrativeImageManualEnabled = false, 插图显示, 逐句推进, 键盘激活 = false, npcRecords, traveler, album, showInnerVoice = true, fallbackPathId, previousUserInput, visualTextSettings, devMode = false, onIllustrationRegenerate, onIllustrationRegenerateAll, onIllustrationRerollPrompts }: TurnItemProps) {
   const isUser = message.role === 'user';
   const parsed = message.parsedResponse;
   const shouldDeferOffscreen = deferOffscreen && !isStreaming && !message.isStreaming;
@@ -81,6 +84,7 @@ function TurnItemImpl({ message, isStreaming, deferOffscreen = false, onEditBody
           narrativeImageManualEnabled={narrativeImageManualEnabled}
           插图显示={插图显示}
           逐句推进={逐句推进}
+          键盘激活={键盘激活}
           npcRecords={npcRecords}
           traveler={traveler}
           album={album}
@@ -90,6 +94,7 @@ function TurnItemImpl({ message, isStreaming, deferOffscreen = false, onEditBody
           visualTextSettings={visualTextSettings}
           devMode={devMode}
           onIllustrationRegenerate={onIllustrationRegenerate}
+          onIllustrationRegenerateAll={onIllustrationRegenerateAll}
           onIllustrationRerollPrompts={onIllustrationRerollPrompts}
         />
       ) : message.isStreaming ? (
@@ -120,6 +125,8 @@ interface AiTurnCardProps {
   narrativeImageManualEnabled?: boolean;
   /** AVG 式逐句推进设置。 */
   逐句推进?: { 启用: boolean; 立即全显: boolean };
+  /** 只有最新回合响应键盘推进，避免历史回合同时前进。 */
+  键盘激活?: boolean;
   /** 正文插图的显示方式（默认显示 / 默认展开）。 */
   插图显示?: { 默认显示: boolean; 默认展开: boolean };
   npcRecords?: NPC记录[];
@@ -131,12 +138,14 @@ interface AiTurnCardProps {
   visualTextSettings?: VisualTextSettings;
   devMode?: boolean;
   onIllustrationRegenerate?: (messageId: string, 插图: 叙事插图, 选项?: 插图重生选项) => void;
+  onIllustrationRegenerateAll?: (messageId: string) => void | Promise<unknown>;
   onIllustrationRerollPrompts?: (messageId: string) => void;
 }
 
-function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEditBody, turnActionView, onTurnAction, narrativeImageManualEnabled = false, 插图显示, 逐句推进, npcRecords, traveler, album, showInnerVoice = true, fallbackPathId, previousUserInput, visualTextSettings, devMode = false, onIllustrationRegenerate, onIllustrationRerollPrompts }: AiTurnCardProps) {
+function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEditBody, turnActionView, onTurnAction, narrativeImageManualEnabled = false, 插图显示, 逐句推进, 键盘激活 = false, npcRecords, traveler, album, showInnerVoice = true, fallbackPathId, previousUserInput, visualTextSettings, devMode = false, onIllustrationRegenerate, onIllustrationRegenerateAll, onIllustrationRerollPrompts }: AiTurnCardProps) {
   const [openTool, setOpenTool] = useState<ToolKey | null>(null);
   const [draft, setDraft] = useState(parsed.body);
+  const [全部重生中, set全部重生中] = useState(false);
 
   const toggle = (key: ToolKey) => {
     setOpenTool((cur) => (cur === key ? null : key));
@@ -202,7 +211,7 @@ function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEd
       />
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [全部插图, album, snapshotAction?.running, onIllustrationRegenerate, onIllustrationRerollPrompts, message.id, 插图显示?.默认展开]);
+  }, [全部插图, album, snapshotAction?.running, onIllustrationRegenerate, onIllustrationRegenerateAll, onIllustrationRerollPrompts, message.id, 插图显示?.默认展开]);
 
   const effectivePathId = parsed.awakenPathId || fallbackPathId || '';
   const pathName = effectivePathId ? getPath(effectivePathId)?.name ?? '' : '';
@@ -342,6 +351,7 @@ function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEd
             行间插图={插图锚点}
             renderIllustration={渲染插图}
             逐句推进={逐句推进}
+            键盘激活={键盘激活}
             生成中={isStreaming || message.isStreaming === true}
           />
         )}
@@ -363,8 +373,31 @@ function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEd
           ? false
           : (message.narrativeImages && message.narrativeImages.length > 0))
         || (narrativeImageManualEnabled && !isStreaming)
+        || (onIllustrationRegenerateAll && (message.narrativeImages?.length ?? 0) > 0)
       ) && (
         <div className="px-1 py-2 space-y-2">
+          {onIllustrationRegenerateAll && (message.narrativeImages?.length ?? 0) > 0 ? (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                disabled={全部重生中 || snapshotAction?.running}
+                onClick={() => {
+                  if (全部重生中) return;
+                  set全部重生中(true);
+                  void Promise.resolve(onIllustrationRegenerateAll(message.id))
+                    .finally(() => set全部重生中(false));
+                }}
+                className="px-2 py-1 text-[11px] transition-all hover:opacity-80 disabled:opacity-40"
+                style={{
+                  color: 'rgba(var(--tj-accent-primary), 0.92)',
+                  background: 'rgba(var(--tj-accent-primary), 0.06)',
+                  border: '1px solid rgba(var(--tj-accent-primary), var(--tj-edge-tint-weak))',
+                }}
+              >
+                {全部重生中 ? '全部重新生成中…' : '全部重新生成图片'}
+              </button>
+            </div>
+          ) : null}
           {/* 已按锚点插进正文行间的插图不再在这里重复渲染。 */}
           {(插图显示?.默认显示 === false ? [] : 未落位插图).map((img) => (
             <NarrativeImageCard

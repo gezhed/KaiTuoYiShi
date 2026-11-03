@@ -139,6 +139,9 @@ export interface UseGameReturn {
       插图: import('@/models/chat').叙事插图,
       options?: { 新提示词正文?: string; 覆盖尺寸?: { 宽度: number; 高度: number } | null; signal?: AbortSignal },
     ) => Promise<import('@/models/chat').叙事插图>;
+    handleRegenerateAllIllustrations: (
+      messageId: string,
+    ) => Promise<import('@/models/chat').叙事插图[]>;
     handleRerollIllustrationPrompts: (
       messageId: string,
       options?: { signal?: AbortSignal },
@@ -1097,6 +1100,69 @@ export function useGame(): UseGameReturn {
   }, []);
 
   /**
+   * 本回合全部插图重新生成：完全不改提示词，按原图逐张重出。
+   * 与单张重生的区别是整轮只落一次盘，避免每次逐张保存互相覆盖。
+   */
+  const handleRegenerateAllIllustrations = useCallback(async (
+    messageId: string,
+  ): Promise<import('@/models/chat').叙事插图[]> => {
+    const 消息 = stateRef.current.chatHistory.find((项) => 项.id === messageId);
+    const 原图 = 消息?.narrativeImages ?? [];
+    if (!消息 || 原图.length === 0) throw new Error('本回合没有可重新生成的插图。');
+    const 回合 = Number(消息.gameTime) || stateRef.current.turnCount;
+    let 历史 = stateRef.current.chatHistory;
+    for (const 插图 of 原图) 历史 = 标记插图为生成中(历史, messageId, 插图.id);
+    stateRef.current.setChatHistory(历史);
+    pushQueueTask(stateRef.current, 'narrative_image_generate', 'pending', {
+      detail: `正在重新生成本回合全部 ${原图.length} 张插图（提示词不变）…`,
+      turn: 回合,
+      targetMessageId: messageId,
+      阶段: '出图中',
+    });
+
+    const 新图: import('@/models/chat').叙事插图[] = [];
+    const 新增条目: Awaited<ReturnType<typeof 重生成消息单张插图>>['新增条目'] = [];
+    let 相册 = stateRef.current.相册;
+    for (const 原插图 of 原图) {
+      try {
+        const 结果 = await 重生成消息单张插图(stateRef.current, 原插图);
+        相册 = 结果.相册;
+        新增条目.push(...结果.新增条目);
+        新图.push(结果.插图);
+        const 下一份历史 = 历史.map((项) => (
+          项.id === messageId
+            ? { ...项, narrativeImages: (项.narrativeImages ?? []).map((候选) => (候选.id === 原插图.id ? 结果.插图 : 候选)) }
+            : 项
+        ));
+        历史 = 下一份历史;
+        stateRef.current.set相册(相册);
+        stateRef.current.setChatHistory(下一份历史);
+      } catch (err) {
+        const 原因 = err instanceof Error ? err.message : String(err);
+        const 失败图: import('@/models/chat').叙事插图 = { ...原插图, status: 'failed', error: 原因 };
+        新图.push(失败图);
+        历史 = 标记插图失败(历史, messageId, 原插图.id, 原因);
+        stateRef.current.setChatHistory(历史);
+      }
+    }
+
+    const 下一份历史 = 历史;
+    const 落盘 = await 保存插图结果(stateRef.current, 下一份历史, 相册, 新增条目);
+    const 失败数 = 新图.filter((项) => 项.status === 'failed').length;
+    pushQueueTask(
+      stateRef.current,
+      'narrative_image_generate',
+      失败数 > 0 ? 'failed' : 'success',
+      {
+        detail: `本回合 ${新图.length} 张插图已全部重新生成${失败数 > 0 ? `，失败 ${失败数} 张` : ''}。落盘：${落盘.回读确认数}/${落盘.资产数} 张${落盘.成功 ? '（已确认）' : `（未确认：${落盘.原因 ?? '未知'}）`}`,
+        turn: 回合,
+        targetMessageId: messageId,
+      },
+    );
+    return 新图;
+  }, []);
+
+  /**
    * 只重跑本回合的插图提示词（保留已出好的图），用于「对提示词不满意重新生成」。
    *
    * 与 `handleGenerateIllustrations` 的区别：这里**不**重新解析正文锚点，
@@ -1221,6 +1287,7 @@ export function useGame(): UseGameReturn {
     handleZhikuMigration,
     handleGenerateIllustrations,
     handleRegenerateIllustration,
+    handleRegenerateAllIllustrations,
     handleRerollIllustrationPrompts,
   }), [
     handleSend,
@@ -1282,6 +1349,7 @@ export function useGame(): UseGameReturn {
     handleZhikuMigration,
     handleGenerateIllustrations,
     handleRegenerateIllustration,
+    handleRegenerateAllIllustrations,
     handleRerollIllustrationPrompts,
   ]);
 
