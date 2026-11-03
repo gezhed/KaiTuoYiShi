@@ -142,6 +142,7 @@ export interface UseGameReturn {
     handleRegenerateAllIllustrations: (
       messageId: string,
     ) => Promise<import('@/models/chat').叙事插图[]>;
+    handleStopIllustration: (messageId?: string) => void;
     handleRerollIllustrationPrompts: (
       messageId: string,
       options?: { signal?: AbortSignal },
@@ -463,6 +464,8 @@ export function useGame(): UseGameReturn {
   const [变量修复回执, set变量修复回执] = useState<变量修复回执 | null>(null);
   const [变量修复提交中, set变量修复提交中] = useState(false);
   const 变量修复AbortRef = useRef<AbortController | null>(null);
+  /** 当前插图生成任务的 abort 控制器；停止按钮用。 */
+  const 插图AbortRef = useRef<AbortController | null>(null);
 
   const handle重新解析变量 = useCallback(async (message: 聊天消息) => {
     const s = stateRef.current;
@@ -569,6 +572,8 @@ export function useGame(): UseGameReturn {
       if (id === 'regenerate_snapshot') {
         const 目标消息 = stateRef.current.chatHistory.find((项) => 项.id === message.id);
         const 回合 = Number(message.gameTime) || stateRef.current.turnCount;
+        const 控制器 = new AbortController();
+        插图AbortRef.current = 控制器;
         // 先落一条 pending 任务：没有它，从点击到出图之间界面上**完全没有反馈**，
         // 用户看到的就是「点了没反应」（实际反馈过两次）。它同时驱动卡片的「正在生成…」。
         pushQueueTask(stateRef.current, 'narrative_image_parse', 'pending', {
@@ -584,6 +589,7 @@ export function useGame(): UseGameReturn {
             目标消息?.parsedResponse?.body.trim() || 目标消息?.content.trim() || message.content,
             undefined,
             {
+              signal: 控制器.signal,
               // 出图阶段单独报一条：只留一条「正在请求 LLM…」的话，出图那几十秒里
               // 界面看不出还在干活，用户会以为卡住了。
               // 只报第一次（完成数 0），后续每张不再刷屏，终局另有 success/failed。
@@ -637,6 +643,8 @@ export function useGame(): UseGameReturn {
             targetMessageId: message.id,
           });
           devLog('turn', 'narrative-image-manual-failed', { 消息Id: message.id, 原因 });
+        } finally {
+          if (插图AbortRef.current === 控制器) 插图AbortRef.current = null;
         }
       } else {
         await handle重新解析变量(message);
@@ -1019,6 +1027,8 @@ export function useGame(): UseGameReturn {
     const 消息 = stateRef.current.chatHistory.find((项) => 项.id === messageId);
     const 正文 = 消息?.parsedResponse?.body.trim() || 消息?.content.trim() || '';
     if (!消息 || !正文) throw new Error('未找到可配图的正文。');
+    const 控制器 = new AbortController();
+    插图AbortRef.current = 控制器;
     try {
       devLog('net', 'illustrations-generate-start', { messageId, 只重新生成提示词: options?.只重新生成提示词 === true });
       const 结果 = await 生成消息插图(
@@ -1026,13 +1036,15 @@ export function useGame(): UseGameReturn {
         messageId,
         正文,
         消息.narrativeImages,
-        options,
+        { ...options, signal: options?.signal ?? 控制器.signal },
       );
       devLog('net', 'illustrations-generate-done', { messageId, 成功: 结果.成功数, 失败: 结果.失败数 });
       return 结果;
     } catch (err) {
       devLogError('net', 'illustrations-generate-failed', err, { messageId });
       throw err;
+    } finally {
+      if (插图AbortRef.current === 控制器) 插图AbortRef.current = null;
     }
   }, []);
 
@@ -1042,6 +1054,8 @@ export function useGame(): UseGameReturn {
     插图: import('@/models/chat').叙事插图,
     options?: { 新提示词正文?: string; 覆盖尺寸?: { 宽度: number; 高度: number } | null; signal?: AbortSignal },
   ): Promise<import('@/models/chat').叙事插图> => {
+    const 控制器 = new AbortController();
+    插图AbortRef.current = 控制器;
     const 回合 = Number(
       stateRef.current.chatHistory.find((项) => 项.id === messageId)?.gameTime,
     ) || stateRef.current.turnCount;
@@ -1060,7 +1074,10 @@ export function useGame(): UseGameReturn {
     });
     try {
       devLog('net', 'illustration-regenerate-start', { id: 插图.id });
-      const 结果 = await 重生成消息单张插图(stateRef.current, 插图, options);
+      const 结果 = await 重生成消息单张插图(stateRef.current, 插图, {
+        ...options,
+        signal: options?.signal ?? 控制器.signal,
+      });
       const 下一份历史 = stateRef.current.chatHistory.map((项) => (
         项.id === messageId
           ? { ...项, narrativeImages: (项.narrativeImages ?? []).map((候选) => (候选.id === 插图.id ? 结果.插图 : 候选)) }
@@ -1096,6 +1113,8 @@ export function useGame(): UseGameReturn {
       });
       devLogError('net', 'illustration-regenerate-failed', err, { id: 插图.id });
       throw err;
+    } finally {
+      if (插图AbortRef.current === 控制器) 插图AbortRef.current = null;
     }
   }, []);
 
@@ -1110,6 +1129,8 @@ export function useGame(): UseGameReturn {
     const 原图 = 消息?.narrativeImages ?? [];
     if (!消息 || 原图.length === 0) throw new Error('本回合没有可重新生成的插图。');
     const 回合 = Number(消息.gameTime) || stateRef.current.turnCount;
+    const 控制器 = new AbortController();
+    插图AbortRef.current = 控制器;
     let 历史 = stateRef.current.chatHistory;
     for (const 插图 of 原图) 历史 = 标记插图为生成中(历史, messageId, 插图.id);
     stateRef.current.setChatHistory(历史);
@@ -1124,8 +1145,13 @@ export function useGame(): UseGameReturn {
     const 新增条目: Awaited<ReturnType<typeof 重生成消息单张插图>>['新增条目'] = [];
     let 相册 = stateRef.current.相册;
     for (const 原插图 of 原图) {
+      if (控制器.signal.aborted) break;
       try {
-        const 结果 = await 重生成消息单张插图({ ...stateRef.current, 相册 }, 原插图);
+        const 结果 = await 重生成消息单张插图(
+          { ...stateRef.current, 相册 },
+          原插图,
+          { signal: 控制器.signal },
+        );
         相册 = 结果.相册;
         新增条目.push(...结果.新增条目);
         新图.push(结果.插图);
@@ -1159,7 +1185,25 @@ export function useGame(): UseGameReturn {
         targetMessageId: messageId,
       },
     );
+    if (插图AbortRef.current === 控制器) 插图AbortRef.current = null;
     return 新图;
+  }, []);
+
+  /** 停止当前插图任务：中断生图请求，清掉停在 generating 的占位图。 */
+  const handleStopIllustration = useCallback((messageId?: string): void => {
+    const s = stateRef.current;
+    插图AbortRef.current?.abort();
+    插图AbortRef.current = null;
+    s.activeWorkflow.abortControllerRef.current?.abort();
+    // 停止是全局的：别让其它回合残留的 generating 占位图继续显示“正在生成”。
+    s.setChatHistory(s.chatHistory.map((项) => ({
+      ...项,
+      narrativeImages: (项.narrativeImages ?? []).filter((插图) => 插图.status !== 'generating'),
+    })));
+    pushQueueTask(s, 'narrative_image_generate', 'skipped', {
+      detail: '已停止插图生成。',
+      targetMessageId: messageId,
+    });
   }, []);
 
   /**
@@ -1180,6 +1224,8 @@ export function useGame(): UseGameReturn {
     // 落一条 pending：少了它，从点击到写回之间界面上**没有任何反馈**，
     // 用户看到的就是「按下去没用」（实际反馈过）。它同时驱动卡片的运行态文案。
     const 回合 = Number(消息.gameTime) || stateRef.current.turnCount;
+    const 控制器 = new AbortController();
+    插图AbortRef.current = 控制器;
     pushQueueTask(stateRef.current, 'narrative_image_parse', 'pending', {
       detail: '正在重跑插图提示词（保留已有图片）…',
       turn: 回合,
@@ -1192,7 +1238,7 @@ export function useGame(): UseGameReturn {
         messageId,
         正文,
         已有,
-        { 只重新生成提示词: true, signal: options?.signal },
+        { 只重新生成提示词: true, signal: options?.signal ?? 控制器.signal },
       );
       // 新提示词逐张并回旧插图：只换提示词，保留原图与锚点。
       const 合并后 = 合并重跑提示词(已有, 结果.插图);
@@ -1222,6 +1268,8 @@ export function useGame(): UseGameReturn {
       });
       devLogError('net', 'illustration-prompts-reroll-failed', err, { messageId });
       throw err;
+    } finally {
+      if (插图AbortRef.current === 控制器) 插图AbortRef.current = null;
     }
   }, []);
 
@@ -1288,6 +1336,7 @@ export function useGame(): UseGameReturn {
     handleGenerateIllustrations,
     handleRegenerateIllustration,
     handleRegenerateAllIllustrations,
+    handleStopIllustration,
     handleRerollIllustrationPrompts,
   }), [
     handleSend,
@@ -1350,6 +1399,7 @@ export function useGame(): UseGameReturn {
     handleGenerateIllustrations,
     handleRegenerateIllustration,
     handleRegenerateAllIllustrations,
+    handleStopIllustration,
     handleRerollIllustrationPrompts,
   ]);
 

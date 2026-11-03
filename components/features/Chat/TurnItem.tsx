@@ -50,6 +50,7 @@ interface TurnItemProps {
   fallbackPathId?: string;
   onIllustrationRegenerate?: (messageId: string, 插图: 叙事插图, 选项?: 插图重生选项) => void;
   onIllustrationRegenerateAll?: (messageId: string) => void | Promise<unknown>;
+  onStopIllustration?: (messageId: string) => void;
   onIllustrationRerollPrompts?: (messageId: string) => void;
 }
 
@@ -60,7 +61,7 @@ const HISTORY_TURN_VISIBILITY_STYLE = {
   containIntrinsicSize: 'auto 640px',
 } as const;
 
-function TurnItemImpl({ message, isStreaming, deferOffscreen = false, onEditBody, turnActionView, onTurnAction, narrativeImageManualEnabled = false, 插图显示, 逐句推进, 键盘激活 = false, 每字毫秒, onPointerEnter, npcRecords, traveler, album, showInnerVoice = true, fallbackPathId, previousUserInput, visualTextSettings, devMode = false, onIllustrationRegenerate, onIllustrationRegenerateAll, onIllustrationRerollPrompts }: TurnItemProps) {
+function TurnItemImpl({ message, isStreaming, deferOffscreen = false, onEditBody, turnActionView, onTurnAction, narrativeImageManualEnabled = false, 插图显示, 逐句推进, 键盘激活 = false, 每字毫秒, onPointerEnter, npcRecords, traveler, album, showInnerVoice = true, fallbackPathId, previousUserInput, visualTextSettings, devMode = false, onIllustrationRegenerate, onIllustrationRegenerateAll, onStopIllustration, onIllustrationRerollPrompts }: TurnItemProps) {
   const isUser = message.role === 'user';
   const parsed = message.parsedResponse;
   const shouldDeferOffscreen = deferOffscreen && !isStreaming && !message.isStreaming;
@@ -100,6 +101,7 @@ function TurnItemImpl({ message, isStreaming, deferOffscreen = false, onEditBody
           每字毫秒={每字毫秒}
           onIllustrationRegenerate={onIllustrationRegenerate}
           onIllustrationRegenerateAll={onIllustrationRegenerateAll}
+          onStopIllustration={onStopIllustration}
           onIllustrationRerollPrompts={onIllustrationRerollPrompts}
         />
       ) : message.isStreaming ? (
@@ -148,10 +150,11 @@ interface AiTurnCardProps {
   devMode?: boolean;
   onIllustrationRegenerate?: (messageId: string, 插图: 叙事插图, 选项?: 插图重生选项) => void;
   onIllustrationRegenerateAll?: (messageId: string) => void | Promise<unknown>;
+  onStopIllustration?: (messageId: string) => void;
   onIllustrationRerollPrompts?: (messageId: string) => void;
 }
 
-function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEditBody, turnActionView, onTurnAction, narrativeImageManualEnabled = false, 插图显示, 逐句推进, 键盘激活 = false, 每字毫秒, onPointerEnter, npcRecords, traveler, album, showInnerVoice = true, fallbackPathId, previousUserInput, visualTextSettings, devMode = false, onIllustrationRegenerate, onIllustrationRegenerateAll, onIllustrationRerollPrompts }: AiTurnCardProps) {
+function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEditBody, turnActionView, onTurnAction, narrativeImageManualEnabled = false, 插图显示, 逐句推进, 键盘激活 = false, 每字毫秒, onPointerEnter, npcRecords, traveler, album, showInnerVoice = true, fallbackPathId, previousUserInput, visualTextSettings, devMode = false, onIllustrationRegenerate, onIllustrationRegenerateAll, onStopIllustration, onIllustrationRerollPrompts }: AiTurnCardProps) {
   const [openTool, setOpenTool] = useState<ToolKey | null>(null);
   const [draft, setDraft] = useState(parsed.body);
   const [全部重生中, set全部重生中] = useState(false);
@@ -170,6 +173,8 @@ function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEd
   const judgementOutcome: '升阶' | null =
     awakeningKind === '评判' && 判定评判是否升阶(parsed.awakenJudgement) ? '升阶' : null;
   const snapshotAction = turnActionView?.regenerate_snapshot;
+  const 插图运行中 = snapshotAction?.running === true
+    || (message.narrativeImages ?? []).some((插图) => 插图.status === 'generating');
   const snapshotRegenerate = onTurnAction ? () => onTurnAction('regenerate_snapshot') : undefined;
 
   /**
@@ -220,7 +225,7 @@ function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEd
       />
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [全部插图, album, snapshotAction?.running, onIllustrationRegenerate, onIllustrationRegenerateAll, onIllustrationRerollPrompts, message.id, 插图显示?.默认展开]);
+  }, [全部插图, album, snapshotAction?.running, onIllustrationRegenerate, onIllustrationRegenerateAll, onStopIllustration, onIllustrationRerollPrompts, message.id, 插图显示?.默认展开]);
 
   const effectivePathId = parsed.awakenPathId || fallbackPathId || '';
   const pathName = effectivePathId ? getPath(effectivePathId)?.name ?? '' : '';
@@ -384,8 +389,25 @@ function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEd
           : (message.narrativeImages && message.narrativeImages.length > 0))
         || (narrativeImageManualEnabled && !isStreaming)
         || (onIllustrationRegenerateAll && (message.narrativeImages?.length ?? 0) > 0)
+        || (插图运行中 && Boolean(onStopIllustration))
       ) && (
         <div className="px-1 py-2 space-y-2">
+          {插图运行中 && onStopIllustration ? (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => onStopIllustration(message.id)}
+                className="px-2 py-1 text-[11px] transition-all hover:opacity-80"
+                style={{
+                  color: 'rgb(var(--tj-danger))',
+                  background: 'rgba(var(--tj-danger), 0.08)',
+                  border: '1px solid rgba(var(--tj-danger), 0.35)',
+                }}
+              >
+                ■ 停止生成插图
+              </button>
+            </div>
+          ) : null}
           {onIllustrationRegenerateAll && (message.narrativeImages?.length ?? 0) > 0 ? (
             <div className="flex justify-end">
               <button

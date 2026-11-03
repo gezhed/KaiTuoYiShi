@@ -453,6 +453,7 @@ export function App() {
             state.turnCount,
           );
         })}
+        onStopIllustration={(messageId) => actions.handleStopIllustration(messageId)}
         onIllustrationRerollPrompts={(messageId) => {
           void actions.handleRerollIllustrationPrompts(messageId).catch((错误) => {
             pushQueueTask(

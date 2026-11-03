@@ -31,6 +31,7 @@ interface ChatListProps {
   devMode?: boolean;
   onIllustrationRegenerate?: (messageId: string, 插图: 叙事插图, 选项?: 插图重生选项) => void;
   onIllustrationRegenerateAll?: (messageId: string) => void | Promise<unknown>;
+  onStopIllustration?: (messageId: string) => void;
   onIllustrationRerollPrompts?: (messageId: string) => void;
 }
 
@@ -71,6 +72,7 @@ interface ChatHistoryListProps {
   devMode?: boolean;
   onIllustrationRegenerate?: (messageId: string, 插图: 叙事插图, 选项?: 插图重生选项) => void;
   onIllustrationRegenerateAll?: (messageId: string) => void | Promise<unknown>;
+  onStopIllustration?: (messageId: string) => void;
   onIllustrationRerollPrompts?: (messageId: string) => void;
 }
 
@@ -91,6 +93,7 @@ const ChatHistoryList = memo(function ChatHistoryList({
   devMode = false,
   onIllustrationRegenerate,
   onIllustrationRegenerateAll,
+  onStopIllustration,
   onIllustrationRerollPrompts,
 }: ChatHistoryListProps) {
   const lastAssistantIndex = messages.reduce((last, msg, index) => (msg.role === 'assistant' ? index : last), -1);
@@ -132,6 +135,7 @@ const ChatHistoryList = memo(function ChatHistoryList({
             devMode={devMode}
             onIllustrationRegenerate={onIllustrationRegenerate}
             onIllustrationRegenerateAll={onIllustrationRegenerateAll}
+            onStopIllustration={onStopIllustration}
             onIllustrationRerollPrompts={onIllustrationRerollPrompts}
           />
         );
@@ -171,7 +175,7 @@ function buildNeighborMeta(messages: 聊天消息[]): NeighborMeta[] {
   return meta;
 }
 
-export function ChatList({ messages, loading, scrollRef, onEditBody, turnActions, turnActionContext, narrativeImageManualEnabled = false, 插图显示, 逐句推进, npcRecords, traveler, album, showInnerVoice = true, visualTextSettings, devMode = false, onIllustrationRegenerate, onIllustrationRegenerateAll, onIllustrationRerollPrompts }: ChatListProps) {
+export function ChatList({ messages, loading, scrollRef, onEditBody, turnActions, turnActionContext, narrativeImageManualEnabled = false, 插图显示, 逐句推进, npcRecords, traveler, album, showInnerVoice = true, visualTextSettings, devMode = false, onIllustrationRegenerate, onIllustrationRegenerateAll, onStopIllustration, onIllustrationRerollPrompts }: ChatListProps) {
   const streamingMessage = useStreamingMessage();
   const 上次广播时刻 = useRef(0);
   // 只有「主机」才广播过程状态；遥控端（手机）只是显示，绝不转发。
@@ -370,6 +374,7 @@ export function ChatList({ messages, loading, scrollRef, onEditBody, turnActions
         devMode={devMode}
         onIllustrationRegenerate={onIllustrationRegenerate}
         onIllustrationRegenerateAll={onIllustrationRegenerateAll}
+            onStopIllustration={onStopIllustration}
         onIllustrationRerollPrompts={onIllustrationRerollPrompts}
       />
 
