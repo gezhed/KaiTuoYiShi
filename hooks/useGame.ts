@@ -1127,7 +1127,12 @@ export function useGame(): UseGameReturn {
   ): Promise<import('@/models/chat').叙事插图[]> => {
     const 消息 = stateRef.current.chatHistory.find((项) => 项.id === messageId);
     const 原图 = 消息?.narrativeImages ?? [];
-    if (!消息 || 原图.length === 0) throw new Error('本回合没有可重新生成的插图。');
+    if (!消息) throw new Error('未找到可重新生成插图的回合。');
+    // 停止时可能一张图都还没写回消息；此时“全部重新生成”退化为重新走一遍配图流程。
+    if (原图.length === 0) {
+      const 结果 = await handleGenerateIllustrations(messageId);
+      return 结果.插图;
+    }
     const 回合 = Number(消息.gameTime) || stateRef.current.turnCount;
     const 控制器 = new AbortController();
     插图AbortRef.current = 控制器;
@@ -1187,7 +1192,7 @@ export function useGame(): UseGameReturn {
     );
     if (插图AbortRef.current === 控制器) 插图AbortRef.current = null;
     return 新图;
-  }, []);
+  }, [handleGenerateIllustrations]);
 
   /** 停止当前插图任务：中断生图请求，清掉停在 generating 的占位图。 */
   const handleStopIllustration = useCallback((messageId?: string): void => {
@@ -1195,10 +1200,15 @@ export function useGame(): UseGameReturn {
     插图AbortRef.current?.abort();
     插图AbortRef.current = null;
     s.activeWorkflow.abortControllerRef.current?.abort();
-    // 停止是全局的：别让其它回合残留的 generating 占位图继续显示“正在生成”。
+    // 目标回合保留图片条目（把生成中改成已停止），这样“全部重新生成图片”不会消失；
+    // 其它回合只清理残留的 generating 占位，避免无图回合一直显示正在生成。
     s.setChatHistory(s.chatHistory.map((项) => ({
       ...项,
-      narrativeImages: (项.narrativeImages ?? []).filter((插图) => 插图.status !== 'generating'),
+      narrativeImages: (项.narrativeImages ?? []).flatMap((插图) => {
+        if (插图.status !== 'generating') return [插图];
+        if (项.id === messageId) return [{ ...插图, status: 'failed' as const, error: '已停止生成' }];
+        return [];
+      }),
     })));
     pushQueueTask(s, 'narrative_image_generate', 'skipped', {
       detail: '已停止插图生成。',
