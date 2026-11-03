@@ -20,7 +20,7 @@ interface ChatListProps {
   turnActionContext?: 回合动作上下文;
   narrativeImageManualEnabled?: boolean;
   /** AVG 式逐句推进设置。 */
-  逐句推进?: { 启用: boolean; 立即全显: boolean; 自动播放?: boolean; 每字毫秒?: number };
+  逐句推进?: { 启用: boolean; 立即全显: boolean; 每字毫秒?: number };
   /** 正文插图的显示方式（默认显示 / 默认展开）。 */
   插图显示?: { 默认显示: boolean; 默认展开: boolean };
   npcRecords?: NPC记录[];
@@ -60,7 +60,7 @@ interface ChatHistoryListProps {
   turnActionContext?: 回合动作上下文;
   narrativeImageManualEnabled?: boolean;
   /** AVG 式逐句推进设置。 */
-  逐句推进?: { 启用: boolean; 立即全显: boolean; 自动播放?: boolean; 每字毫秒?: number };
+  逐句推进?: { 启用: boolean; 立即全显: boolean; 每字毫秒?: number };
   /** 正文插图的显示方式（默认显示 / 默认展开）。 */
   插图显示?: { 默认显示: boolean; 默认展开: boolean };
   npcRecords?: NPC记录[];
@@ -113,7 +113,6 @@ const ChatHistoryList = memo(function ChatHistoryList({
             deferOffscreen
             onPointerEnter={() => set悬停消息ID(msg.id)}
             键盘激活={idx === 键盘激活下标}
-            自动播放={逐句推进?.自动播放 === true && idx === 键盘激活下标}
             每字毫秒={逐句推进?.每字毫秒}
             onEditBody={onEditBody}
             turnActionView={actionView}

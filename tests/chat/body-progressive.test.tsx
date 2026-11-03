@@ -76,7 +76,7 @@ describe('BodyBlock 的逐段推进', () => {
 
   it('跳到末段后显示最后一段', () => {
     render(<BodyBlock content={正文} 逐句推进={{ 启用: true, 立即全显: false }} />);
-    fireEvent.click(screen.getByText('跳到末段'));
+    fireEvent.click(screen.getByText('跳到结尾 ⏭'));
     expect(screen.getByText(/第三段旁白内容/)).toBeInTheDocument();
     expect(screen.queryByText(/第一段旁白内容/)).not.toBeInTheDocument();
   });
@@ -186,11 +186,11 @@ describe('插图固定在上方', () => {
     render(
       <BodyBlock
         content={'一二三\n四五六'}
-        逐句推进={{ 启用: true, 立即全显: false, 自动播放: true, 每字毫秒: 100 }}
-        自动播放
+        逐句推进={{ 启用: true, 立即全显: false, 每字毫秒: 100 }}
         每字毫秒={100}
       />,
     );
+    fireEvent.click(screen.getByText('▶ 自动'));
     expect(screen.getByText(/一二三/)).toBeInTheDocument();
     act(() => { vi.advanceTimersByTime(599); });
     expect(screen.getByText(/一二三/)).toBeInTheDocument();

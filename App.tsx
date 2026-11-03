@@ -329,12 +329,10 @@ export function App() {
   const 逐句推进 = useMemo(() => ({
     启用: gameSettings.逐句推进?.启用 === true,
     立即全显: gameSettings.逐句推进?.立即全显 === true,
-    自动播放: gameSettings.逐句推进?.自动播放 === true,
     每字毫秒: gameSettings.逐句推进?.每字毫秒 ?? 80,
   }), [
     gameSettings.逐句推进?.启用,
     gameSettings.逐句推进?.立即全显,
-    gameSettings.逐句推进?.自动播放,
     gameSettings.逐句推进?.每字毫秒,
   ]);
 

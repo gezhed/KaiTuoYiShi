@@ -14,7 +14,7 @@ const RANGE_MAX = 30;
 
 export function VisualSettingsTab({ settings, onChange }: Props) {
   const visual = 归一化视觉文本设置(settings.visualTextSettings);
-  const 逐段 = settings.逐句推进 ?? { 启用: false, 立即全显: false, 自动播放: false, 每字毫秒: 80 };
+  const 逐段 = settings.逐句推进 ?? { 启用: false, 立即全显: false, 每字毫秒: 80 };
 
   const update = (patch: Partial<VisualTextSettings>) => {
     onChange({
@@ -118,15 +118,11 @@ export function VisualSettingsTab({ settings, onChange }: Props) {
           checked={逐段.立即全显}
           onChange={(值) => 更新逐段({ 立即全显: 值 })}
         />
-        <开关行
-          label="自动播放"
-          desc="当前段显示完后，按本段字数 × 每字速度自动前进；鼠标停在哪一回合，就自动播放哪一回合。"
-          checked={逐段.自动播放 === true}
-          onChange={(值) => 更新逐段({ 自动播放: 值 })}
-        />
-        {逐段.自动播放 === true && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 px-1">
-            <span className="text-xs" style={{ color: 'rgba(var(--tj-text-secondary), 0.78)' }}>每字速度</span>
+        <div className="mt-3 px-1">
+          <div className="mb-1 text-xs" style={{ color: 'rgba(var(--tj-text-secondary), 0.78)' }}>
+            自动播放速度（自动开关在每回合对话框右下角）
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
             <input
               type="range"
               min={10}
@@ -147,7 +143,7 @@ export function VisualSettingsTab({ settings, onChange }: Props) {
             />
             <span className="text-xs" style={{ color: 'rgba(var(--tj-text-secondary), 0.6)' }}>毫秒/字</span>
           </div>
-        )}
+        </div>
       </section>
 
       <section

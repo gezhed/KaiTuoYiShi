@@ -29,11 +29,9 @@ interface TurnItemProps {
   onTurnAction?: (id: 回合动作ID) => void;
   narrativeImageManualEnabled?: boolean;
   /** AVG 式逐句推进设置。 */
-  逐句推进?: { 启用: boolean; 立即全显: boolean; 自动播放?: boolean; 每字毫秒?: number };
+  逐句推进?: { 启用: boolean; 立即全显: boolean; 每字毫秒?: number };
   /** 鼠标悬停/最新回合响应键盘推进，避免历史回合同时前进。 */
   键盘激活?: boolean;
-  /** 自动播放当前段。 */
-  自动播放?: boolean;
   /** 自动播放每个字的毫秒数。 */
   每字毫秒?: number;
   /** 鼠标进入本回合时切换键盘/自动播放目标。 */
@@ -62,7 +60,7 @@ const HISTORY_TURN_VISIBILITY_STYLE = {
   containIntrinsicSize: 'auto 640px',
 } as const;
 
-function TurnItemImpl({ message, isStreaming, deferOffscreen = false, onEditBody, turnActionView, onTurnAction, narrativeImageManualEnabled = false, 插图显示, 逐句推进, 键盘激活 = false, 自动播放 = false, 每字毫秒, onPointerEnter, npcRecords, traveler, album, showInnerVoice = true, fallbackPathId, previousUserInput, visualTextSettings, devMode = false, onIllustrationRegenerate, onIllustrationRegenerateAll, onIllustrationRerollPrompts }: TurnItemProps) {
+function TurnItemImpl({ message, isStreaming, deferOffscreen = false, onEditBody, turnActionView, onTurnAction, narrativeImageManualEnabled = false, 插图显示, 逐句推进, 键盘激活 = false, 每字毫秒, onPointerEnter, npcRecords, traveler, album, showInnerVoice = true, fallbackPathId, previousUserInput, visualTextSettings, devMode = false, onIllustrationRegenerate, onIllustrationRegenerateAll, onIllustrationRerollPrompts }: TurnItemProps) {
   const isUser = message.role === 'user';
   const parsed = message.parsedResponse;
   const shouldDeferOffscreen = deferOffscreen && !isStreaming && !message.isStreaming;
@@ -99,7 +97,6 @@ function TurnItemImpl({ message, isStreaming, deferOffscreen = false, onEditBody
           previousUserInput={previousUserInput}
           visualTextSettings={visualTextSettings}
           devMode={devMode}
-          自动播放={自动播放}
           每字毫秒={每字毫秒}
           onIllustrationRegenerate={onIllustrationRegenerate}
           onIllustrationRegenerateAll={onIllustrationRegenerateAll}
@@ -132,11 +129,9 @@ interface AiTurnCardProps {
   onTurnAction?: (id: 回合动作ID) => void;
   narrativeImageManualEnabled?: boolean;
   /** AVG 式逐句推进设置。 */
-  逐句推进?: { 启用: boolean; 立即全显: boolean; 自动播放?: boolean; 每字毫秒?: number };
+  逐句推进?: { 启用: boolean; 立即全显: boolean; 每字毫秒?: number };
   /** 鼠标悬停/最新回合响应键盘推进，避免历史回合同时前进。 */
   键盘激活?: boolean;
-  /** 自动播放当前段。 */
-  自动播放?: boolean;
   /** 自动播放每个字的毫秒数。 */
   每字毫秒?: number;
   /** 鼠标进入本回合时切换键盘/自动播放目标。 */
@@ -156,7 +151,7 @@ interface AiTurnCardProps {
   onIllustrationRerollPrompts?: (messageId: string) => void;
 }
 
-function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEditBody, turnActionView, onTurnAction, narrativeImageManualEnabled = false, 插图显示, 逐句推进, 键盘激活 = false, 自动播放 = false, 每字毫秒, onPointerEnter, npcRecords, traveler, album, showInnerVoice = true, fallbackPathId, previousUserInput, visualTextSettings, devMode = false, onIllustrationRegenerate, onIllustrationRegenerateAll, onIllustrationRerollPrompts }: AiTurnCardProps) {
+function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEditBody, turnActionView, onTurnAction, narrativeImageManualEnabled = false, 插图显示, 逐句推进, 键盘激活 = false, 每字毫秒, onPointerEnter, npcRecords, traveler, album, showInnerVoice = true, fallbackPathId, previousUserInput, visualTextSettings, devMode = false, onIllustrationRegenerate, onIllustrationRegenerateAll, onIllustrationRerollPrompts }: AiTurnCardProps) {
   const [openTool, setOpenTool] = useState<ToolKey | null>(null);
   const [draft, setDraft] = useState(parsed.body);
   const [全部重生中, set全部重生中] = useState(false);
@@ -366,7 +361,6 @@ function AiTurnCard({ message, parsed, isStreaming, deferOffscreen = false, onEd
             renderIllustration={渲染插图}
             逐句推进={逐句推进}
             键盘激活={键盘激活}
-            自动播放={自动播放}
             每字毫秒={每字毫秒}
             生成中={isStreaming || message.isStreaming === true}
           />

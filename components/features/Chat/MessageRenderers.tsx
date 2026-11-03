@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { NPC记录 } from '@/models/npc';
 import { 读取NPC头像 } from '@/models/npc';
@@ -27,13 +27,11 @@ interface BodyBlockProps {
   /** 渲染一张插图卡片；返回 null 表示这张不渲染。 */
   renderIllustration?: (插图Id: string) => ReactNode;
   /** AVG 式逐句推进设置；不传即关闭，行为与原来一致。 */
-  逐句推进?: { 启用: boolean; 立即全显: boolean; 自动播放?: boolean; 每字毫秒?: number };
+  逐句推进?: { 启用: boolean; 立即全显: boolean; 每字毫秒?: number };
   /** 流式生成中：句子还在变，逐句推进没有意义，强制全显。 */
   生成中?: boolean;
   /** 只有鼠标所在/最新回合响应空格/回车；避免历史回合跟着一起前进。 */
   键盘激活?: boolean;
-  /** 自动播放当前段。 */
-  自动播放?: boolean;
   /** 自动播放每个字的毫秒数。 */
   每字毫秒?: number;
 }
@@ -466,7 +464,8 @@ export const NarrationLine = memo(function NarrationLine({ text, fontSize = 15, 
   );
 });
 
-export function BodyBlock({ content, npcRecords, traveler, album, showInnerVoice = true, userInput, visualTextSettings, deferOffscreen = false, 行间插图, renderIllustration, 逐句推进, 生成中 = false, 键盘激活 = true, 自动播放 = false, 每字毫秒 }: BodyBlockProps) {
+export function BodyBlock({ content, npcRecords, traveler, album, showInnerVoice = true, userInput, visualTextSettings, deferOffscreen = false, 行间插图, renderIllustration, 逐句推进, 生成中 = false, 键盘激活 = true, 每字毫秒 }: BodyBlockProps) {
+  const [自动播放, set自动播放] = useState(false);
   const lines = useMemo(() => (content ? parseBodyLines(content, traveler, userInput) : []), [content, traveler, userInput]);
   const fontSettings = useMemo(() => normalizeVisualTextSettings(visualTextSettings), [visualTextSettings]);
   const npcMap = useMemo(() => buildNpcLookupMap(npcRecords), [npcRecords]);
@@ -616,29 +615,64 @@ export function BodyBlock({ content, npcRecords, traveler, album, showInnerVoice
         但第一次遇到的人需要看到「还能往下走」，否则会以为正文就这么多。
       */}
       {!推进.是否全显 ? (
-        <button
-          type="button"
-          onClick={推进.前进}
-          className="mt-2 w-full px-2 py-1.5 text-[11px] transition-all hover:opacity-80"
-          style={{
-            color: 'rgba(var(--tj-text-secondary), 0.66)',
-            background: 'rgba(var(--tj-accent-primary), 0.04)',
-            border: '1px solid rgba(var(--tj-accent-primary), var(--tj-edge-tint-weak))',
-            // 和其它按钮一样带切角：正文里的操作按钮此前是仅剩的直角方块，
-            // galgame 模式下尤其显眼（用户报的「按钮显示 bug」之一）。
-            clipPath: smallClip,
-          }}
-        >
-          {推进.段序号 >= 推进.段总数 - 1
-            ? '已是最后一段（滚轮向上可回退）'
-            : `▼ 继续（滚轮 / 空格 / 回车）　·　${推进.段序号 + 1} / ${推进.段总数} 段`}
-          <span
-            className="ml-2 underline"
-            onClick={(事件) => { 事件.stopPropagation(); 推进.全部展开(); }}
+        <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5">
+          <button
+            type="button"
+            onClick={推进.回到开头}
+            disabled={推进.段序号 <= 0}
+            className="px-2 py-1 text-[11px] transition-all hover:opacity-80 disabled:opacity-35"
+            style={{
+              color: 'rgba(var(--tj-text-secondary), 0.72)',
+              background: 'rgba(var(--tj-accent-primary), 0.04)',
+              border: '1px solid rgba(var(--tj-accent-primary), var(--tj-edge-tint-weak))',
+              clipPath: smallClip,
+            }}
           >
-            跳到末段
-          </span>
-        </button>
+            ⏮ 返回开头
+          </button>
+          <button
+            type="button"
+            onClick={() => set自动播放((当前) => !当前)}
+            aria-pressed={自动播放}
+            className="px-2 py-1 text-[11px] transition-all hover:opacity-80"
+            style={{
+              color: 自动播放 ? 'rgb(var(--tj-on-accent))' : 'rgba(var(--tj-text-secondary), 0.72)',
+              background: 自动播放 ? 'rgb(var(--tj-accent-primary))' : 'rgba(var(--tj-accent-primary), 0.04)',
+              border: '1px solid rgba(var(--tj-accent-primary), var(--tj-edge-tint-weak))',
+              clipPath: smallClip,
+            }}
+          >
+            {自动播放 ? '⏸ 自动中' : '▶ 自动'}
+          </button>
+          <button
+            type="button"
+            onClick={推进.全部展开}
+            disabled={推进.段序号 >= 推进.段总数 - 1}
+            className="px-2 py-1 text-[11px] transition-all hover:opacity-80 disabled:opacity-35"
+            style={{
+              color: 'rgba(var(--tj-text-secondary), 0.72)',
+              background: 'rgba(var(--tj-accent-primary), 0.04)',
+              border: '1px solid rgba(var(--tj-accent-primary), var(--tj-edge-tint-weak))',
+              clipPath: smallClip,
+            }}
+          >
+            跳到结尾 ⏭
+          </button>
+          <button
+            type="button"
+            onClick={推进.前进}
+            disabled={推进.段序号 >= 推进.段总数 - 1}
+            className="px-2 py-1 text-[11px] transition-all hover:opacity-80 disabled:opacity-35"
+            style={{
+              color: 'rgba(var(--tj-text-primary), 0.8)',
+              background: 'rgba(var(--tj-accent-primary), 0.08)',
+              border: '1px solid rgba(var(--tj-accent-primary), var(--tj-edge-tint))',
+              clipPath: smallClip,
+            }}
+          >
+            ▼ 继续 · {推进.段序号 + 1} / {推进.段总数} 段
+          </button>
+        </div>
       ) : null}
     </div>
   );

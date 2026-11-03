@@ -44,6 +44,9 @@ export interface 逐段推进状态 {
   容器引用: (节点: HTMLDivElement | null) => void;
   前进: () => void;
   后退: () => void;
+  /** 跳到第一段。 */
+  回到开头: () => void;
+  /** 跳到末段。 */
   全部展开: () => void;
 }
 
@@ -140,6 +143,7 @@ export function use逐段推进({
   }, []);
 
   const 全部展开 = useCallback(() => set段序号(Math.max(0, 段总数 - 1)), [段总数]);
+  const 回到开头 = useCallback(() => set段序号(0), []);
 
   /*
    * 滚轮：向下前进、向上后退。
@@ -206,6 +210,7 @@ export function use逐段推进({
     容器引用,
     前进,
     后退,
+    回到开头,
     全部展开,
   };
 }
