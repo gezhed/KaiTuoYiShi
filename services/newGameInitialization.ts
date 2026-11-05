@@ -1,7 +1,8 @@
 // 本模块只做同步纯组装：不写 React state、不落库，投影与持久化由调用侧 handle 负责。
 import type { 角色数据结构 } from '@/models/character';
 import { 归一化旅人 } from '@/models/character';
-import type { 世界状态, 开局档案 } from '@/models/world';
+import type { 世界状态, 开局档案, 开局整理档案, 开局自制NPC } from '@/models/world';
+import { 提取前史关系种子, 合并前史关系种子, 收集前史关系文本 } from '@/models/relationshipSeed';
 import {
   创建空世界状态,
   根据开局档案创建初始NPC记录,
@@ -149,7 +150,7 @@ function buildFreshOpeningState(draft: OpeningPresetDraft): Omit<新局组装件
   worldState.原著主角 = canonicalName;
   worldState.自定义开局 = effectiveCustomStartPrompt;
   if (draft.openingSource === 'official_preset') {
-    worldState.开局档案 = scenarioPreset ? 根据官方开局预设创建开局档案(scenarioPreset, {
+    const officialArchive = scenarioPreset ? 根据官方开局预设创建开局档案(scenarioPreset, {
       ...worldState,
       自定义开局: effectiveCustomStartPrompt,
     }) : 根据起始场景创建开局档案(selectedScenario ?? {
@@ -162,6 +163,10 @@ function buildFreshOpeningState(draft: OpeningPresetDraft): Omit<新局组装件
       ...worldState,
       自定义开局: effectiveCustomStartPrompt,
     });
+    // 官方预设不覆盖预设本身的身份/目标，只把玩家前史里明确写出的关系并进来。
+    worldState.开局档案 = draft.parsedArchive
+      ? 合并前史关系档案(officialArchive, draft.parsedArchive)
+      : officialArchive;
   } else {
     worldState.开局档案 = 根据自由开局整理创建开局档案({
       ...freeOpeningInput,
@@ -186,7 +191,11 @@ function buildFreshOpeningState(draft: OpeningPresetDraft): Omit<新局组装件
       ...(selectedScenario?.openingHighlights ?? []).map((text) => `场景要点：${text}`),
     ],
   });
-  const npcRecords = 根据开局档案创建初始NPC记录(worldState.开局档案);
+  const npcRecords = 合并前史关系种子(
+    根据开局档案创建初始NPC记录(worldState.开局档案),
+    // 本地兜底：即使 AI 整理失败或官方预设跳过整理，也把玩家写的前史关系种进伙伴系统。
+    提取前史关系种子(收集前史关系文本(draft.background, effectiveCustomStartPrompt)),
+  );
 
   return {
     旅人: traveler,
@@ -194,6 +203,27 @@ function buildFreshOpeningState(draft: OpeningPresetDraft): Omit<新局组装件
     openingArchive: worldState.开局档案,
     npcRecords,
   };
+}
+
+function 合并前史关系档案(archive: 开局档案, parsed: 开局整理档案): 开局档案 {
+  const base = archive.整理档案 ?? {};
+  const customNpcs = new Map<string, 开局自制NPC>();
+  for (const npc of [...(base.自制NPC ?? []), ...(parsed.自制NPC ?? [])]) {
+    if (npc.姓名 && !customNpcs.has(npc.姓名)) customNpcs.set(npc.姓名, npc);
+  }
+  return {
+    ...archive,
+    整理档案: {
+      ...base,
+      已认识角色: 去重字符串([...(base.已认识角色 ?? []), ...(parsed.已认识角色 ?? [])]),
+      初始关系: 去重字符串([...(base.初始关系 ?? []), ...(parsed.初始关系 ?? [])]),
+      自制NPC: [...customNpcs.values()],
+    },
+  };
+}
+
+function 去重字符串(values: Array<string | undefined>): string[] {
+  return Array.from(new Set(values.map((value) => (value ?? '').trim()).filter(Boolean)));
 }
 
 function buildRestartOpeningState(current: 工作区字段集): Omit<新局组装件, 'storyWeaving'> {

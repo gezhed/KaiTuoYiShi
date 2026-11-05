@@ -68,6 +68,7 @@ export const BUILTIN_PROMPT_MODULE_IDS = [
   'builtin_perspective_third',
   'builtin_nsfw',
   'builtin_emotion_protocol',
+  'builtin_memory_knowledge_map',
   'builtin_cognitive_isolation',
   'builtin_rule_first_turn',
   'builtin_rule_narrative_general',

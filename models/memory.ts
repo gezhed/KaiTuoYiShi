@@ -1,3 +1,5 @@
+import { 归一化记忆事件, type 记忆事件 } from './memoryEvent';
+
 export type 记忆压缩层级 = 'short' | 'middle' | 'long';
 export type 记忆失败代码 = 'request_failed' | 'empty_output' | 'source_changed';
 export type 记忆失败草稿状态 = 'pending' | 'retrying' | 'resolved' | 'ignored';
@@ -24,6 +26,8 @@ export interface 记忆系统 {
   中期记忆: string[];
   长期记忆: string[];
   失败草稿: 记忆失败草稿[];
+  /** Phase 0 事件台账：与四层滚动记忆并存，Phase 1 再迁到独立顶层字段。 */
+  事件?: 记忆事件[];
 }
 
 export const MEMORY_DRAFT_MAX_PENDING = 3;
@@ -60,6 +64,7 @@ export function 创建空记忆系统(): 记忆系统 {
     中期记忆: [],
     长期记忆: [],
     失败草稿: [],
+    事件: [],
   };
 }
 
@@ -222,6 +227,7 @@ export function 归一化记忆系统(input?: unknown): { value: 记忆系统; i
     中期记忆: 归一化字符串数组(raw.中期记忆, '中期记忆', issues),
     长期记忆: 归一化字符串数组(raw.长期记忆, '长期记忆', issues),
     失败草稿: 剪裁记忆草稿(归一化记忆草稿(raw.失败草稿, issues)),
+    事件: 归一化记忆事件(raw.事件, issues),
   };
   return { value, issues };
 }

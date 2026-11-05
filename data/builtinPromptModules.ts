@@ -555,6 +555,26 @@ const EMOTION_PROTOCOL_CONTENT = `# 复合情感协议（felt[A+B]）
 - 与文风模块不冲突：文风决定行文质感，felt 决定角色当下的情绪底色。
 - NSFW 场景同样适用：亲密场景中的 felt 可能是 \`felt[渴望+紧张]\` 或 \`felt[主动+羞怯]\`，主调决定推进节奏，底色在细节里流露。`;
 
+const MEMORY_KNOWLEDGE_MAP_CONTENT = `# 记忆归档：知情映射
+
+## 输出位置
+
+在主剧情思维链 Step14 的最后，另起一行输出一条机器可读记录（只写在思维链里，不要写进正文）：
+
+【知情映射】在场：A、B；背景在场：C；亲见：A；被告知：B；不在场：D；公开度：半公开
+
+## 规则
+
+- 只写本回合**正文中真实成立**的事实；Step6 备选路线、Step7 计划登场、Step13 未来计划都不算。
+- 在场：本回合实际出现在场景中的人（含玩家）。
+- 背景在场：思维链里计划在场、但正文没有实际动作的人；可目击，不主动参与。
+- 亲见：亲眼看到 / 亲耳听到本回合核心事件的人。
+- 被告知：本回合内由他人告知而得知的人；跨回合才得知的不要写。
+- 不在场：明确不在场、且不应知道本回合事件的人。
+- 公开度：公开 / 半公开 / 私密。
+- 名字用正文中的称呼；多人用“、”分隔；没有就写“无”。
+- 这一行只服务记忆归档，不改变正文，也不要解释。`;
+
 const COGNITIVE_ISOLATION_CONTENT = `# 认知隔离机制（Master / <user>）
 
 ## 核心概念
@@ -1300,6 +1320,18 @@ export function createBuiltinPromptModules(): 提示词模块[] {
       createdAt: now,
       updatedAt: now,
     }),
+  makeBuiltin({
+    id: 'builtin_memory_knowledge_map',
+    title: '记忆知情映射',
+    description: '每回合在主剧情思维链 Step14 末尾输出一行【知情映射】，登记在场/亲见/被告知/不在场，供记忆事件台账使用。关闭后本回合不产生事件记录。',
+    category: 'custom',
+    content: MEMORY_KNOWLEDGE_MAP_CONTENT,
+    enabled: true,
+    order: 1046,
+    scope: ['main'],
+    createdAt: now,
+    updatedAt: now,
+  }),
   makeBuiltin({
     id: 'builtin_cognitive_isolation',
       title: '认知隔离机制',

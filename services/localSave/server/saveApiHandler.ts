@@ -12,7 +12,9 @@ import {
 import {
   applyMutation,
   countStoreRows,
+  findStoreRowKeyByPath,
   hasLocalSaveData,
+  listStoreKeys,
   readManifest,
   readStoreRow,
   readStoreRows,
@@ -58,6 +60,10 @@ export async function handleSaveApi(request: Request): Promise<Response> {
     if (request.method === 'GET' && route.startsWith('store/')) {
       const store = route.slice('store/'.length);
       if (!isLocalSaveStoreName(store)) return json({ ok: false, error: 'unknown-store' }, 404);
+      // 只列主键：客户端启动时算 catalog / 分配存档 id，不读整行。
+      if (url.searchParams.get('keys') === '1') {
+        return json({ ok: true, store, keys: await listStoreKeys(store) });
+      }
       // 按键取单行：供客户端「按需读取」未预载的存档（不再整库回灌）。
       const 单键 = url.searchParams.get('key');
       if (单键 !== null) {
@@ -73,6 +79,17 @@ export async function handleSaveApi(request: Request): Promise<Response> {
         ...(tail ? { tail: Number(tail) } : {}),
       });
       return json({ ok: true, store, ...page });
+    }
+
+    if (request.method === 'GET' && route.startsWith('find/')) {
+      const store = route.slice('find/'.length);
+      if (!isLocalSaveStoreName(store)) return json({ ok: false, error: 'unknown-store' }, 404);
+      const path = url.searchParams.get('path') ?? '';
+      const value = url.searchParams.get('value');
+      if (!path || value === null) return json({ ok: false, error: 'invalid-query' }, 400);
+      const key = await findStoreRowKeyByPath(store, path, value);
+      const numeric = key !== null && /^\d+$/.test(key) ? Number(key) : null;
+      return json({ ok: true, store, key, id: numeric });
     }
 
     if (request.method === 'GET' && route === 'stats') {

@@ -534,7 +534,9 @@ const [openingArchiveStatus, setOpeningArchiveStatus] = useState('');
     setOpeningArchiveStatus('');
     try {
       const draft: OpeningPresetDraft = { ...currentPresetDraft };
-      if (draft.openingSource !== 'official_preset') {
+      const backgroundText = [draft.background, draft.customStartPrompt].map((item) => item.trim()).filter(Boolean).join('\n');
+      const shouldParseArchive = draft.openingSource !== 'official_preset' || Boolean(backgroundText);
+      if (shouldParseArchive) {
         setOpeningArchiveStatus('正在整理开局档案...');
         try {
           const parsedArchive = await onParseOpeningArchive(draft);

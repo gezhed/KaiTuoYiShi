@@ -40,4 +40,14 @@ describe('规则模块', () => {
     }
     expect(migrated.find((module) => module.id === 'builtin_narrator_persona')?.enabled).toBe(false);
   });
+
+  it('记忆知情映射模块默认启用且只注入主剧情', () => {
+    const modules = createBuiltinPromptModules();
+    const module = modules.find((candidate) => candidate.id === 'builtin_memory_knowledge_map');
+
+    expect(module).toBeDefined();
+    expect(module?.enabled).toBe(true);
+    expect(module?.scope).toStrictEqual(['main']);
+    expect(module?.content).toContain('【知情映射】');
+  });
 });

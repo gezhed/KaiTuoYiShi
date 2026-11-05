@@ -43,6 +43,7 @@ import {
   buildWeatherSection,
   buildWordCountSection,
   splitLayeredMemory,
+  formatMemoryRecallSection,
 } from './systemPromptSections';
 
 export type { BuiltSystemPrompt, ChatModuleMessage, SystemPromptInput, 命途狭间阶段 };
@@ -166,6 +167,7 @@ export function buildSystemPrompt(input: SystemPromptInput): BuiltSystemPrompt {
     renderPlanGroup(plan?.keywordEntries ?? [], input.worldbookCtx, '世界书'),
     zhikuSection,
     memory.short,
+    formatMemoryRecallSection(input.memoryRecallInjection),
     yitingSection,
     buildStyleAssistantSection(input.modules),
     buildExtraRequirementSection(input.settings),

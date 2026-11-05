@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { AI提供商, API设置, 游戏设置 } from '@/models/settings';
 import type { ConnectionTestConfig, ConnectionTestResult } from '@/hooks/useAiTools';
 import { resolveMainApiConfig } from '@/services/apiConfig';
@@ -160,6 +160,55 @@ export function MemorySystemSettingsTab({ settings, onChange, apiSettings, onPer
           checked={memory.启用中短长期API总结}
           onChange={(checked) => patchMemory({ 启用中短长期API总结: checked })}
         />
+      </Section>
+
+      <Section title="向量召回（本地模型）">
+        <ToggleField
+          label="启用向量召回"
+          desc="用浏览器本地 embedding 模型补充回忆检索，主要捞回同义改写、代称和跨回合复述；关键词/忆庭仍是主路径。"
+          checked={memory.向量召回启用}
+          onChange={(checked) => patchMemory({ 向量召回启用: checked })}
+        />
+        <div className="grid gap-3 md:grid-cols-2">
+          <InputField
+            label="本地模型"
+            value={memory.向量召回模型}
+            onChange={(value) => patchMemory({ 向量召回模型: value })}
+            placeholder="Xenova/bge-small-zh-v1.5"
+          />
+          <InputField
+            label="模型源"
+            value={memory.向量召回模型源}
+            onChange={(value) => patchMemory({ 向量召回模型源: value })}
+            placeholder="https://hf-mirror.com"
+          />
+          <NumberField
+            label="每回合最多注入"
+            value={memory.向量召回TopK}
+            onChange={(value) => patchMemory({ 向量召回TopK: Math.max(1, Math.floor(value)) })}
+            hint="参与注入的相关回忆条数；建议 3-5 条。"
+          />
+          <NumberField
+            label="最低相似度"
+            value={memory.向量召回最低相似度}
+            onChange={(value) => patchMemory({ 向量召回最低相似度: Math.min(1, Math.max(0, value)) })}
+            hint="0-1；越高越严格，建议 0.35-0.5。"
+            step={0.05}
+            min={0}
+            max={1}
+          />
+        </div>
+        <NumberField
+          label="注入字数上限"
+          value={memory.向量召回注入字数}
+          onChange={(value) => patchMemory({ 向量召回注入字数: Math.max(120, Math.floor(value)) })}
+          hint="相关回忆段的字符预算，超出按相似度截断。"
+          step={100}
+          min={120}
+        />
+        <div className="text-[11px] leading-relaxed" style={{ color: 'rgba(var(--tj-text-secondary), 0.7)' }}>
+          内置 bge-small-zh-v1.5（约 24MB，随应用一起打包，离线可用）；只有把“本地模型”改成别的模型时才会从模型源下载。下载失败或超时会自动退回关键词召回，不影响主剧情。向量只作为派生缓存，不写入存档。
+        </div>
       </Section>
 
       <Section title="记忆总结 API">

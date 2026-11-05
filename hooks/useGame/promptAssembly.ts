@@ -56,6 +56,7 @@ export interface SystemPromptInput {
   awakeningPhase?: 命途狭间阶段;
   yitingInjectionOverride?: string;
   zhikuInjectionOverride?: string;
+  memoryRecallInjection?: string;
   npcLedgerSelection?: NPC账本选择结果;
   triggerType?: string;
   macroCtx?: MacroContext;

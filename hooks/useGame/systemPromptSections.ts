@@ -63,6 +63,13 @@ export function formatMemorySection(title: string, entries: string[]): string {
   return `# 记忆｜${title}\n\n${entries.map((m, i) => `${i + 1}. ${m}`).join('\n')}`;
 }
 
+/** 向量召回的事件回忆；没有命中时返回空串，不占提示词。 */
+export function formatMemoryRecallSection(injection?: string): string {
+  const content = injection?.trim();
+  if (!content) return '';
+  return `# 记忆｜相关回忆\n\n${content}`;
+}
+
 export interface LayeredMemoryLimits {
   long?: number;
   middle?: number;

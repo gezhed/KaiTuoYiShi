@@ -366,6 +366,13 @@ export default defineConfig({
       '@': path.resolve(__dirname, './'),
     },
   },
+  worker: {
+    format: 'es',
+  },
+  optimizeDeps: {
+    // transformers.js 体积大且带 wasm/onnx，预打包容易破坏 worker 内的资源定位。
+    exclude: ['@huggingface/transformers'],
+  },
   server: {
     port: 3000,
     host: '0.0.0.0',

@@ -9,6 +9,8 @@ export interface OpeningArchiveParseInput {
   chapterName: string;
   chapterSummary: string;
   playerText: string;
+  /** 旅人档案里的“背景”。只用于已认识角色/初始关系/自制NPC，不参与当前目标与地点整理。 */
+  backgroundText?: string;
   defaultLocationHint?: string;
   defaultDateHint?: string;
   defaultTimeHint?: string;
@@ -80,6 +82,8 @@ const OPENING_ARCHIVE_SYSTEM_PROMPT = `你是「开拓轶事」的开局整理�
 - 地点来源为自创地点时，再整理自定义地点/星球、地点简介、NPC详情、当前目标、局部冲突、组织势力和世界设定补充；不要把章节锚点写成当前剧情入口。
 - 自制NPC必须按对象数组输出；每个 NPC 至少要有姓名，能补则补背景、是否命途行者、能力、与玩家关系、当前状态。不要把云骑军、公司、家族、列车组、地火这类组织或群体写成自制NPC。
 - 如果玩家写了“我和某某很熟/是旧识/欠人情/正在合作”，要把该角色写进已认识角色，并在初始关系中写成可承接的具体关系；如果是原创人物，也同步写入自制NPC。
+- “旅人前史”是玩家为角色写的主线前经历，只用来提取已认识角色、初始关系、自制NPC 与关系证据；不要用它改写当前目标、当前地点或起始情境。
+- 旅人前史里明确写“不认识/只是听说/未曾见过/不熟”的角色，不要写进已认识角色。
 `;
 
 export async function parseOpeningArchiveWithAI(
@@ -108,6 +112,9 @@ export async function parseOpeningArchiveWithAI(
             '',
             '# 玩家介入原文',
             input.playerText.trim() || '（空）',
+            input.backgroundText?.trim()
+              ? ['', '# 旅人前史（只用于已认识角色/初始关系/自制NPC）', input.backgroundText.trim()].join('\n')
+              : '',
             '',
             '请整理成结构化开局档案，只输出 JSON。'
           ].filter(Boolean).join('\n'),

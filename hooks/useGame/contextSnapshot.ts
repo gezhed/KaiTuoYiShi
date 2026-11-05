@@ -47,6 +47,8 @@ import {
   latestAssistantZhikuDebugRecall,
   splitPromptSections,
 } from './contextSnapshotDiagnostics';
+import { 解析知情映射 } from '@/models/memoryEvent';
+import { getMemoryEmbeddingStatus } from '@/services/memoryVector/embeddingClient';
 
 export interface ContextSection {
   id: string;
@@ -158,6 +160,41 @@ export function buildContextSnapshot(state: UseGameStateReturn, kind: ContextSna
     default:
       return buildMainContextSnapshot(state);
   }
+}
+
+function formatMemoryVectorSnapshot(state: UseGameStateReturn): string {
+  const settings = state.deviceSettings.gameSettings.记忆系统;
+  const status = getMemoryEmbeddingStatus();
+  return [
+    `启用：${settings.向量召回启用 ? '是' : '否'}`,
+    `模型：${settings.向量召回模型}`,
+    `本地状态：${status.status}${status.error ? `（${status.error}）` : ''}`,
+    `可检索事件：${(state.记忆.事件 ?? []).length} 条`,
+    `参数：TopK ${settings.向量召回TopK}｜最低相似度 ${settings.向量召回最低相似度}｜预算 ${settings.向量召回注入字数} 字`,
+  ].join('\n');
+}
+
+function formatMemoryEventLedger(state: UseGameStateReturn): string {
+  const events = state.记忆.事件 ?? [];
+  const lastAssistant = [...state.chatHistory].reverse().find((msg) => msg.role === 'assistant');
+  const mapping = lastAssistant?.parsedResponse?.thinking
+    ? 解析知情映射(lastAssistant.parsedResponse.thinking)
+    : null;
+  const list = (names: string[]) => (names.length ? names.join('、') : '无');
+  const lines = [`事件总数：${events.length}`];
+  if (mapping) {
+    lines.push(`最近回复知情映射：在场 ${list(mapping.在场)}｜背景在场 ${list(mapping.背景在场)}｜亲见 ${list(mapping.亲见)}｜被告知 ${list(mapping.被告知)}｜不在场 ${list(mapping.不在场)}｜公开度 ${mapping.公开度}`);
+  } else {
+    lines.push('最近回复知情映射：缺失（检查「记忆知情映射」提示词模块是否启用）');
+  }
+  const last = events.at(-1);
+  if (last) {
+    lines.push(`最近事件：回合${last.回合}｜${last.摘要}`);
+    lines.push(`最近事件归属：参与人 ${list(last.参与人)}｜亲见 ${list(last.亲见)}｜被告知 ${list(last.被告知)}｜背景在场 ${list(last.背景在场)}`);
+  } else {
+    lines.push('最近事件：无（本回合映射缺失或尚未开始新回合）');
+  }
+  return lines.join('\n');
 }
 
 function buildMainContextSnapshot(state: UseGameStateReturn): ContextSnapshot {
@@ -411,6 +448,22 @@ function buildMainContextSnapshot(state: UseGameStateReturn): ContextSnapshot {
     title: '剧情规划分析快照',
     category: '诊断',
     content: formatStoryPlanningAnalysisSnapshot(state),
+    upload: false,
+    diagnostic: true,
+  });
+  addSection(sections, {
+    id: 'memory_event_ledger',
+    title: '记忆事件台账（Phase 0）',
+    category: '诊断',
+    content: formatMemoryEventLedger(state),
+    upload: false,
+    diagnostic: true,
+  });
+  addSection(sections, {
+    id: 'memory_vector_recall',
+    title: '向量召回状态',
+    category: '诊断',
+    content: formatMemoryVectorSnapshot(state),
     upload: false,
     diagnostic: true,
   });

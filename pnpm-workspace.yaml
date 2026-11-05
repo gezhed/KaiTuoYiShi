@@ -1,5 +1,7 @@
 allowBuilds:
   esbuild: true
+  onnxruntime-node: set this to true or false
+  protobufjs: set this to true or false
   sharp: true
   workerd: true
 onlyBuiltDependencies:

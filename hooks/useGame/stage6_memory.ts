@@ -1,5 +1,6 @@
 import type { TurnAfterReply, TurnContext, TurnDeltas } from './turnTypes';
 import { buildImmediateMemory, addImmediateMemory, autoCompressMemorySystemWithArchivesAsync, type MemoryCompressionOutcome } from './memoryUtils';
+import { 构建记忆事件FromReply, 封顶记忆事件 } from '@/models/memoryEvent';
 import { resolveApiConfig } from '@/services/apiConfig';
 import { pushQueueTask } from './workflowTaskRuntime';
 
@@ -27,6 +28,22 @@ export async function stage6_memory(
   );
   assertWorkflowActive();
   mem = compression.memory;
+
+  const event = 构建记忆事件FromReply({
+    turn: turnCountAtStart,
+    thinking: parsedForDisplay.thinking,
+    body: displayText,
+    summary: parsedForDisplay.memory,
+    worldTime: [state.世界.当前日期, state.世界.当前时间].filter(Boolean).join(' '),
+    location: state.世界.当前地点,
+    now: Date.now(),
+  });
+  if (event) {
+    mem = {
+      ...mem,
+      事件: 封顶记忆事件([...(mem.事件 ?? []), event]),
+    };
+  }
 
   if (compression.failedDraft) {
     pushQueueTask(state, 'memory', 'failed', {

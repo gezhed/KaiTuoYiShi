@@ -98,7 +98,9 @@ export async function stage10_storyZhiku(
     }
   }
 
-  let memoryAfterStoryProgress = variableOverrides?.记忆 ?? mem;
+  let memoryAfterStoryProgress = variableOverrides?.记忆
+    ? { ...variableOverrides.记忆, 事件: mem.事件 ?? variableOverrides.记忆.事件 }
+    : mem;
   const storyWeaving = d.storyWeavingForSave ?? state.剧情编织;
   const storyAlignment = skipStoryAlignment || continuity.hold
     ? { system: storyWeaving, changed: false, progressed: false }

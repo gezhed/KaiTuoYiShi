@@ -14,6 +14,15 @@ import { runWithSaveMutationPriority } from '@/services/storage/saveCatalogRepai
 import { openDB, SAVES_STORE, SAVE_SUMMARIES_STORE, SAVE_NODE_DELTAS_STORE, SAVE_ASSETS_STORE, NEWEST_STORY_STORE } from './dbConnection';
 import { buildDeltaOnlyStoredSave, buildSaveNodeDeltaRecord, isDeltaOnlyStoredSave } from '@/utils/saveDeltaStorage';
 import { extractSaveAssetRecords, materializeSaveAssetRecords, stripSaveAssetPayloadForStorage } from '@/utils/saveAssetStorage';
+import {
+  diskFindAutoDeltaBase,
+  diskGetRow,
+  diskLoadRawSave,
+  diskMutate,
+  diskRestoreDeltaSaveIfNeeded,
+  diskSerializeAssetRecords,
+  getSaveStorageMode,
+} from './saveDiskStore';
 import { 投影存档载荷为落盘 } from '@/utils/savePayloadProjection';
 import { omitKeys, toError } from '@/utils/storageUtils';
 
@@ -44,6 +53,10 @@ export async function createLeafNode(payload: 存档数据): Promise<LeafNodeRes
 
 /** sealedPayload 必须是 loadSave 恢复出的完整状态（含叶子原 saveTree / id）。 */
 export async function sealLeafRow(sealedPayload: 存档数据): Promise<void> {
+  if (await getSaveStorageMode() === 'disk') {
+    await sealLeafRowOnDisk(sealedPayload);
+    return;
+  }
   const saveId = sealedPayload.id;
   const db = await openDB();
   const raw = await loadRawSave(db, saveId);
@@ -120,6 +133,66 @@ export async function sealLeafRow(sealedPayload: 存档数据): Promise<void> {
           devLogError('save', 'checkpoint-reconcile-failed', error);
         });
       }
+    }
+  }
+}
+
+async function sealLeafRowOnDisk(sealedPayload: 存档数据): Promise<void> {
+  const saveId = sealedPayload.id;
+  const raw = await diskLoadRawSave(saveId);
+  if (!raw) {
+    throw new Error(`封版叶子失败：叶子行不存在（saveId=${saveId}）。`);
+  }
+  if (!isUnsealedHeadSave(raw)) {
+    devLog('save', 'seal-leaf-skipped-already-sealed', { saveId });
+    return;
+  }
+  const sealedFields = omitKeys(
+    stripEphemeralFields(投影存档载荷为落盘(sealedPayload, 'sealed')) as 存档数据 & { saveStorage?: unknown },
+    ['queueTasks', 'saveStorage'] as const,
+  );
+  const sealedStored = stripSaveAssetPayloadForStorage({
+    ...sealedFields,
+    id: saveId,
+    saveRuntime: undefined,
+  });
+  const deltaBase = await diskFindAutoDeltaBase(sealedStored);
+  // 写入前再确认一次：本地服务是单写者，但同一标签页仍可能有迟到的封版调用。
+  const current = await diskLoadRawSave(saveId);
+  if (!current || !isUnsealedHeadSave(current)) {
+    devLog('save', 'seal-leaf-skipped-already-sealed', { saveId });
+    return;
+  }
+  const row = deltaBase ? buildDeltaOnlyStoredSave(sealedStored, deltaBase.baseSaveId) : sealedStored;
+  const assets = await diskSerializeAssetRecords(
+    materializeSaveAssetRecords(extractSaveAssetRecords(sealedStored)),
+  );
+  const delta = buildSaveNodeDeltaRecord(
+    sealedStored,
+    saveId,
+    deltaBase
+      ? { baseSave: deltaBase.baseSave, baseSaveId: deltaBase.baseSaveId, storageMode: 'delta' }
+      : undefined,
+  );
+  await diskMutate({
+    puts: {
+      saves: [row],
+      saveSummaries: [createCatalogRecordFromSummary(buildSaveSummary(sealedStored))],
+      ...(delta ? { saveNodeDeltas: [delta] } : {}),
+      ...(assets.length ? { saveAssets: assets } : {}),
+    },
+  });
+  devLog('save', 'seal-leaf', {
+    saveId,
+    nodeId: (sealedStored as SaveWithTree).saveTree?.nodeId ?? null,
+    storage: 'disk',
+  });
+  if (sealedStored.type === 'auto') {
+    const rootId = (sealedStored as SaveWithTree).saveTree?.rootId;
+    if (rootId) {
+      await compressAutoSaveWindow(rootId).catch((error: unknown) => {
+        devLogError('save', 'auto-window-compress-failed', error);
+      });
     }
   }
 }
@@ -201,7 +274,7 @@ export async function compressAutoSaveWindow(rootId: string): Promise<number> {
   const keepOldest = chain[AUTO_WINDOW_DELTAS] as SaveListItemSummary | undefined;
   const 链上新父 = 链上截断[链上截断.length - 1] as SaveListItemSummary | undefined;
   const nextParentNodeId = 链上新父 ? (链上新父.saveTree?.parentNodeId ?? null) : null;
-  const db = await openDB();
+  const db = await getSaveStorageMode() === 'disk' ? null : await openDB();
   await deleteManagedSaveItems(db, drop);
   // 只有链上确实截断过，才存在「保留链的新链根」；否则 keepOldest 为空，不能重定父。
   if (链上截断.length && keepOldest && keepOldest.saveTree?.nodeId) {
@@ -217,7 +290,7 @@ export async function compressAutoSaveWindow(rootId: string): Promise<number> {
 
 /** 只改节点的 saveTree.parentNodeId（原样保留其余字段，避免用残缺行重算摘要）。 */
 async function reparentSaveNode(
-  db: IDBDatabase,
+  db: IDBDatabase | null,
   item: SaveListItemSummary,
   parentNodeId: string | null,
 ): Promise<void> {
@@ -228,8 +301,25 @@ async function reparentSaveNode(
     else delete next.parentNodeId;
     return next;
   };
+  if (await getSaveStorageMode() === 'disk') {
+    const saveRow = await diskGetRow<Record<string, unknown>>('saves', item.id);
+    const summaryRow = await diskGetRow<Record<string, unknown>>('saveSummaries', item.id);
+    const puts: Record<string, unknown[]> = {};
+    if (saveRow?.saveTree && typeof saveRow.saveTree === 'object') {
+      puts.saves = [{ ...saveRow, saveTree: patchTree(saveRow.saveTree as 存档树元信息) }];
+    }
+    if (summaryRow?.saveTree && typeof summaryRow.saveTree === 'object') {
+      puts.saveSummaries = [{ ...summaryRow, saveTree: patchTree(summaryRow.saveTree as 存档树元信息) }];
+    }
+    if (Object.keys(puts).length) {
+      await diskMutate({ puts: puts as Parameters<typeof diskMutate>[0]['puts'] });
+    }
+    return;
+  }
+  if (!db) return;
+  const database = db;
   await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction([SAVES_STORE, SAVE_SUMMARIES_STORE], 'readwrite');
+    const tx = database.transaction([SAVES_STORE, SAVE_SUMMARIES_STORE], 'readwrite');
     const saveStore = tx.objectStore(SAVES_STORE);
     const summaryStore = tx.objectStore(SAVE_SUMMARIES_STORE);
     const saveRequest = saveStore.get(item.id);
@@ -334,6 +424,10 @@ export async function loadActiveLeaf(): Promise<ActiveLeafLoadResult> {
 export async function isActiveLeafWritable(headNodeId: string): Promise<boolean> {
   const saveId = await loadSaveIdByNodeId(headNodeId);
   if (!saveId) return false;
+  if (await getSaveStorageMode() === 'disk') {
+    const raw = await diskLoadRawSave(saveId);
+    return raw !== null && isUnsealedHeadSave(raw);
+  }
   const db = await openDB();
   const raw = await loadRawSave(db, saveId);
   return raw !== null && isUnsealedHeadSave(raw);
@@ -344,6 +438,10 @@ export async function isActiveLeafWritable(headNodeId: string): Promise<boolean>
  * 「复核未封版 + 写入」必须在同一 readwrite 事务内完成，否则 sealLeafRow 可能在本事务提交前改写该行。
  */
 async function putHeadRow(saveId: number, patch: Partial<存档数据>): Promise<void> {
+  if (await getSaveStorageMode() === 'disk') {
+    await putHeadRowOnDisk(saveId, patch);
+    return;
+  }
   const startedAt = Date.now();
   const patchWithoutId = omitKeys(patch, ['id'] as const);
   const patchKeys = Object.keys(patchWithoutId);
@@ -411,6 +509,46 @@ async function putHeadRow(saveId: number, patch: Partial<存档数据>): Promise
     };
     tx.onerror = () => reject(toError(tx.error));
     tx.onabort = () => reject(tx.error ?? new Error('草稿存档写入事务已中止。'));
+  });
+}
+
+async function putHeadRowOnDisk(saveId: number, patch: Partial<存档数据>): Promise<void> {
+  const startedAt = Date.now();
+  const raw = await diskLoadRawSave(saveId);
+  if (!raw) {
+    const error = new Error('未找到要写入的草稿存档。');
+    devLogError('save', 'puthead-rejected-missing', error, { saveId });
+    throw error;
+  }
+  if (!isUnsealedHeadSave(raw)) {
+    const error = new Error('已封版历史节点不可通过 putHeadRow 改写。');
+    devLogError('save', 'puthead-rejected-sealed', error, { saveId });
+    throw error;
+  }
+  const restored = isDeltaOnlyStoredSave(raw)
+    ? await diskRestoreDeltaSaveIfNeeded(raw)
+    : raw;
+  const patchWithoutId = omitKeys(patch, ['id'] as const);
+  const next = { ...restored, ...patchWithoutId, id: saveId } as StoredSaveMeta;
+  const nextStored = stripSaveAssetPayloadForStorage(next);
+  const assets = await diskSerializeAssetRecords(
+    materializeSaveAssetRecords(extractSaveAssetRecords(nextStored)),
+  );
+  const delta = buildSaveNodeDeltaRecord(nextStored, saveId);
+  await diskMutate({
+    puts: {
+      saves: [nextStored],
+      saveSummaries: [createCatalogRecordFromSummary(buildSaveSummary(nextStored))],
+      ...(delta ? { saveNodeDeltas: [delta] } : {}),
+      ...(assets.length ? { saveAssets: assets } : {}),
+    },
+  });
+  devLog('save', 'puthead', {
+    saveId,
+    fieldCount: Object.keys(patchWithoutId).length,
+    restoredFromDelta: isDeltaOnlyStoredSave(raw),
+    durationMs: Date.now() - startedAt,
+    storage: 'disk',
   });
 }
 
@@ -578,7 +716,7 @@ async function performTreeNodeDeletion(
     if (nodeId) deletedNodeIds.add(nodeId);
   }
 
-  const db = await openDB();
+  const db = await getSaveStorageMode() === 'disk' ? null : await openDB();
   await deleteManagedSaveItems(db, subtree);
 
   const newest = await loadNewestStory();
@@ -661,7 +799,7 @@ export async function deleteLegacyBackupSaves(): Promise<number> {
   return runWithSaveMutationPriority(async () => {
     const catalog = await getSaveCatalogSnapshot();
     if (!catalog.legacyBackups.length) return 0;
-    const db = await openDB();
+    const db = await getSaveStorageMode() === 'disk' ? null : await openDB();
     await deleteManagedSaveItems(db, catalog.legacyBackups);
     return catalog.legacyBackups.length;
   });
@@ -681,6 +819,10 @@ export async function loadSaveTree(rootId: string): Promise<存档数据[]> {
 }
 
 export async function loadNewestStory(): Promise<NewestStory记录> {
+  if (await getSaveStorageMode() === 'disk') {
+    const row = await diskGetRow<NewestStory记录>('newestStory', NEWEST_STORY_STORE_KEY);
+    return 归一化NewestStory记录(row);
+  }
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(NEWEST_STORY_STORE, 'readonly');
@@ -694,6 +836,10 @@ export async function loadNewestStory(): Promise<NewestStory记录> {
 }
 
 export async function saveNewestStory(record: NewestStory记录): Promise<void> {
+  if (await getSaveStorageMode() === 'disk') {
+    await diskMutate({ puts: { newestStory: [record] } });
+    return;
+  }
   const db = await openDB();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(NEWEST_STORY_STORE, 'readwrite');

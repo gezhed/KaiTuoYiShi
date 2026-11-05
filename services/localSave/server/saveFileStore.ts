@@ -210,6 +210,37 @@ export async function readStoreRows(
   };
 }
 
+/** 按嵌套字段找人：仅用于「nodeId → saveId」这种低频定位，不参与常规读档。 */
+export async function findStoreRowKeyByPath(
+  store: LocalSaveStoreName,
+  path: string,
+  value: string,
+  root = resolveSaveRoot(),
+): Promise<string | null> {
+  const segments = path.split('.').filter(Boolean);
+  if (!segments.length) return null;
+  const keys = await listStoreKeys(store, root);
+  for (const key of keys) {
+    let row: unknown;
+    try {
+      row = await readStoreRow(store, key, root);
+    } catch {
+      continue;
+    }
+    let cursor: unknown = row;
+    let matched = true;
+    for (const segment of segments) {
+      if (!cursor || typeof cursor !== 'object') {
+        matched = false;
+        break;
+      }
+      cursor = (cursor as Record<string, unknown>)[segment];
+    }
+    if (matched && String(cursor ?? '') === value) return key;
+  }
+  return null;
+}
+
 async function writeManifest(root: string, next: LocalSaveManifest): Promise<void> {
   await atomicWriteFile(manifestPath(root), JSON.stringify(next, null, 2));
 }

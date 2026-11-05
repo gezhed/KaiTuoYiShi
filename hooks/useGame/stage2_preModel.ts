@@ -7,6 +7,7 @@ import { runNewsGenerationStep } from './newsWorkflow';
 import { formatOriginalProtagonistForOpening } from './mainResponseProtocol';
 import { retrieveYitingContextWithModel } from '@/services/yitingRetrieval';
 import { retrieveZhikuContextWithModel } from '@/services/zhikuRetrieval';
+import { recallMemoryEvents } from '@/services/memoryVector/memoryVectorRecall';
 import { resolveApiConfig } from '@/services/apiConfig';
 import { evaluateStoryWeavingGate, getStoryWeavingInjectionDiagnostics } from '@/services/storyWeaving';
 import { selectNpcLedgersForTurn } from '@/models/npc';
@@ -69,6 +70,11 @@ export async function stage2_preModel(
 
   const recallQuery = buildMainRecallQuery({ userInput, history: updatedHistory, currentLocation: effectiveWorld.当前地点, npcNames: worldbookCtx.npcNames });
   const zhikuRecallQuery = buildZhikuKeywordRecallQuery({ userInput, history: updatedHistory });
+  const memoryVectorEvents = state.记忆.事件 ?? [];
+  const memoryVectorEnabled = !isOpeningSystemTrigger
+    && state.deviceSettings.gameSettings.enableMemoryInjection
+    && memorySettings?.向量召回启用 === true
+    && memoryVectorEvents.length > 0;
 
   let newsForPrompt = state.新闻;
   let openingNewsForSave: 新闻条目[] | null = null;
@@ -117,7 +123,7 @@ export async function stage2_preModel(
     ? getStoryWeavingInjectionDiagnostics(state.剧情编织) : null;
   pushQueueTask(state, 'yiting', yitingRecallEnabled ? 'pending' : 'skipped', { detail: yitingRecallEnabled ? '正在检索回忆档案。' : '未到忆庭召回回合，已跳过。', cancellable: yitingRecallEnabled }, turnCountAtStart, queueTasksMirror);
 
-  const [yitingPreview, zhikuPreview] = await Promise.all([
+  const [yitingPreview, zhikuPreview, memoryVectorPreview] = await Promise.all([
     yitingRecallEnabled && yiting && recallQuery
       ? retrieveYitingContextWithModel(yiting, recallQuery, memorySettings.忆庭召回条数, memorySettings, resolveApiConfig(state.deviceSettings.apiSettings, state.deviceSettings.gameSettings, 'yitingRecall'), abortController.signal, memorySettings.忆庭召回API.retryCount, state.deviceSettings.gameSettings.promptModules)
           .catch((err: unknown) => {
@@ -133,17 +139,36 @@ export async function stage2_preModel(
             return null;
           })
       : Promise.resolve(null),
+    memoryVectorEnabled
+      ? recallMemoryEvents({
+          events: memoryVectorEvents,
+          query: recallQuery,
+          settings: memorySettings,
+          signal: abortController.signal,
+        }).catch((err: unknown) => {
+          devLogError('net', 'stage2_preModel.memoryVectorRecall.catch', err, { turn: turnCountAtStart });
+          return null;
+        })
+      : Promise.resolve(null),
   ]);
   assertWorkflowActive();
 
-  const recallSummaryForTurn = [formatZhikuRecallSummary(zhikuPreview?.diagnostics), formatYitingRecallSummary(yitingPreview?.previewText)].join('\n');
-  const recallFullContentForTurn = [zhikuPreview?.injection ? ['【智库完整召回】', zhikuPreview.injection].join('\n') : '', yitingPreview?.injection ? ['【记忆完整召回】', yitingPreview.injection].join('\n') : ''].filter(Boolean).join('\n\n');
+  const recallSummaryForTurn = [
+    formatZhikuRecallSummary(zhikuPreview?.diagnostics),
+    formatYitingRecallSummary(yitingPreview?.previewText),
+    memoryVectorPreview && memoryVectorPreview.status !== 'disabled' ? `向量回忆：${memoryVectorPreview.message}` : '',
+  ].filter(Boolean).join('\n');
+  const recallFullContentForTurn = [
+    zhikuPreview?.injection ? ['【智库完整召回】', zhikuPreview.injection].join('\n') : '',
+    yitingPreview?.injection ? ['【记忆完整召回】', yitingPreview.injection].join('\n') : '',
+    memoryVectorPreview?.injection ? ['【向量回忆】', memoryVectorPreview.injection].join('\n') : '',
+  ].filter(Boolean).join('\n\n');
   state.activeWorkflow.setLiveRecallSummary(recallSummaryForTurn);
   state.activeWorkflow.setLiveRecallFullContent(recallFullContentForTurn);
 
   const memoryHint = isOpeningSystemTrigger
     ? '开局专用上下文已注入：角色 / 场景 / 切入说明 / 开局世界书 / 开局 CoT'
-    : state.deviceSettings.gameSettings.enableMemoryInjection ? `记忆上下文已注入：短期 ${state.记忆.短期记忆.length} 条 / 中期 ${(midTermMemories ?? []).length} 条 / 长期 ${state.记忆.长期记忆.length} 条${yitingPreview?.injection ? '；剧情回忆已命中并并存注入' : ''}；即时缓存 ${state.记忆.即时记忆.length} 条仅用于后续压缩`
+    : state.deviceSettings.gameSettings.enableMemoryInjection ? `记忆上下文已注入：短期 ${state.记忆.短期记忆.length} 条 / 中期 ${(midTermMemories ?? []).length} 条 / 长期 ${state.记忆.长期记忆.length} 条${yitingPreview?.injection ? '；剧情回忆已命中并并存注入' : ''}${memoryVectorPreview?.hits.length ? `；向量回忆 ${memoryVectorPreview.hits.length} 条` : ''}；即时缓存 ${state.记忆.即时记忆.length} 条仅用于后续压缩`
     : '记忆上下文已跳过';
   const yitingHint = !yitingEnabled ? '忆庭召回已关闭'
     : yitingPreview?.entries.length ? `剧情回忆已召回：强 ${yitingPreview.strongEntries?.length ?? 0} 条 / 弱 ${yitingPreview.weakEntries?.length ?? 0} 条`
@@ -191,6 +216,7 @@ export async function stage2_preModel(
     awakeningPhase,
     yitingInjectionOverride: storyRecallInjection || (yitingRecallEnabled ? '' : undefined),
     zhikuInjectionOverride: zhikuRecallEnabled ? (zhikuPreview?.injection ?? '') : undefined,
+    memoryRecallInjection: memoryVectorPreview?.injection ?? '',
     npcLedgerSelection,
     triggerType: currentTriggerType,
     macroCtx,

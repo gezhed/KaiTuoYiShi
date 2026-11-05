@@ -7,6 +7,7 @@
  */
 import { openDB, SAVES_STORE } from './dbConnection';
 import { installDbWriteSink, type DbWriteBatch } from './idbWriteMirror';
+import { getSaveStorageMode } from './saveDiskStore';
 import {
   LOCAL_SAVE_API_PREFIX,
   LOCAL_SAVE_STORE_NAMES,
@@ -51,6 +52,7 @@ export function isDiskPersistenceEnabled(): boolean {
  * 本机写入会同步刷新同步标记，所以标记与磁盘不一致即可认为是“别处更新了”。
  */
 export async function 检查磁盘是否领先(): Promise<boolean> {
+  if (await getSaveStorageMode() === 'disk') return false;
   if (!enabled) return false;
   const health = await fetchHealth();
   if (!health || !health.hasData || health.updatedAt === null) return false;
@@ -77,6 +79,7 @@ export async function 统计本机存档(): Promise<Record<string, number>> {
  * 用于把电脑已有的进度共享给手机（历史存档若创建于镜像生效之前，单靠写穿透不会补推）。
  */
 export async function 强制全量落盘(): Promise<void> {
+  if (await getSaveStorageMode() === 'disk') return;
   if (!enabled) return;
   await flushAllFromIdb();
 }
@@ -98,6 +101,7 @@ async function fetchDiskCounts(): Promise<Record<string, number> | null> {
  * 这是“IDB 在浏览器缓存被清前基本都有货”这一前提下的主推方向，保证手机能拿到电脑上最新最全的进度。
  */
 export async function 对账并补齐磁盘(): Promise<{ pushed: boolean; reason: string }> {
+  if (await getSaveStorageMode() === 'disk') return { pushed: false, reason: 'disk-mode' };
   if (!enabled) return { pushed: false, reason: 'disabled' };
   if (await 检查磁盘是否领先()) return { pushed: false, reason: 'disk-ahead' };
   const 磁盘 = await fetchDiskCounts();
@@ -507,6 +511,13 @@ function 限时<T>(任务: Promise<T>, ms: number, 标签: string): Promise<T> {
 }
 
 export async function bootstrapDiskPersistence(): Promise<void> {
+  if (await getSaveStorageMode() === 'disk') {
+    // 磁盘直写模式：不进写穿透镜像，也不做启动回灌/对账。
+    // enabled 仍置 true，让 transcript（每回合正文）继续落盘。
+    enabled = true;
+    devLog('save', 'disk-direct-mode', { mirror: false });
+    return;
+  }
   installDbWriteSink(handleBatch);
   suspended = true;
   try {

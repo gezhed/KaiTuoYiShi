@@ -21,10 +21,15 @@ import {
   SAVE_CATALOG_REPAIR_OWNER,
 } from './dbConnection';
 import { isPlainRecord, toError } from '@/utils/storageUtils';
+import { getSaveStorageMode } from './saveDiskStore';
+
+const EMPTY_REPAIR_RESULT = { total: 0, processed: 0, failed: 0, skippedForLease: false };
 
 export async function startSaveCatalogRepair(
   scope: SaveCatalogRepairScope = 'missing-only',
 ): Promise<SaveCatalogRepairResult> {
+  // 磁盘直写模式没有「IDB 目录落后」这回事：catalog 与 saves 同源，不需要回填。
+  if (await getSaveStorageMode() === 'disk') return { ...EMPTY_REPAIR_RESULT };
   const db = await openDB();
   return startSaveCatalogRepairTask(scope, {
     collectIds: async (requestedScope) => {
@@ -45,11 +50,13 @@ export async function startSaveCatalogRepair(
 }
 
 export async function repairSaveDatabase(): Promise<void> {
+  if (await getSaveStorageMode() === 'disk') return;
   await startSaveCatalogRepair('full-validation');
   await repairDanglingSaveTreeParents();
 }
 
 export async function repairDanglingSaveTreeParents(): Promise<number> {
+  if (await getSaveStorageMode() === 'disk') return 0;
   return runWithSaveMutationPriority(async () => {
     const db = await openDB();
     const rows: Array<{ id: number; saveTree?: 存档树元信息 | null }> = [];

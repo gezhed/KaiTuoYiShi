@@ -885,7 +885,8 @@ export function useGame(): UseGameReturn {
   }, []);
 
   const handleParseOpeningArchive = useCallback(async (draft: OpeningPresetDraft): Promise<开局整理档案 | null> => {
-    if (draft.openingSource === 'official_preset') return null;
+    const relationshipText = [draft.background, draft.customStartPrompt].map((item) => item.trim()).filter(Boolean).join('\n');
+    if (draft.openingSource === 'official_preset' && !relationshipText) return null;
     const config = getActiveConfig();
     if (!config) return null;
     const { freeOpeningInput } = deriveOpeningDraftContext(draft);
@@ -897,6 +898,7 @@ export function useGame(): UseGameReturn {
         chapterName: freeOpeningInput.chapterName,
         chapterSummary: freeOpeningInput.chapterSummary,
         playerText: freeOpeningInput.playerText,
+        backgroundText: draft.background.trim(),
         defaultLocationHint: freeOpeningInput.defaultLocationHint,
         defaultDateHint: freeOpeningInput.defaultDateHint,
         defaultTimeHint: freeOpeningInput.defaultTimeHint,
@@ -904,7 +906,11 @@ export function useGame(): UseGameReturn {
         planetSource: freeOpeningInput.planetSource,
         mainlineEnabled: freeOpeningInput.mainlineEnabled,
         keyNpcs: freeOpeningInput.keyNpcs,
-        sourceLabel: draft.openingSource === 'workshop' ? '创意工坊开局' : '自由开局',
+        sourceLabel: draft.openingSource === 'workshop'
+          ? '创意工坊开局'
+          : draft.openingSource === 'official_preset'
+            ? '官方预设开局（只整理前史关系）'
+            : '自由开局',
       },
       config.retryCount ?? 2,
     );

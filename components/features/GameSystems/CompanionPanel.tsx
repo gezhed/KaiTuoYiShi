@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { NPC记录, NPC阶位 } from '@/models/npc';
 import { 归一化NPC记录列表 } from '@/models/npc';
+import { 提取前史关系种子, 合并前史关系种子, 收集前史关系文本 } from '@/models/relationshipSeed';
 import type { 相册系统 } from '@/models/imageGeneration';
 import type { 智库系统 } from '@/models/zhiku';
 import type { UseGameStateReturn } from '@/hooks/useGameState';
@@ -54,6 +55,7 @@ export function CompanionPanel({
   const [tab, setTab] = useState<NPC阶位>('companion');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [头像编辑, set头像编辑] = useState<{ npcId: string; 名称: string; 默认槽位?: string } | null>(null);
+  const [syncNote, setSyncNote] = useState('');
   const normalizedRecords = useMemo(() => {
     const normalized = 归一化NPC记录列表(npcRecords);
     return enrichNpcArchives(normalized, {
@@ -101,6 +103,17 @@ export function CompanionPanel({
 
   const promoteToCompanion = (id: string) => updateRecord(id, { 阶位: 'companion' });
   const demoteToExtra = (id: string) => updateRecord(id, { 阶位: 'extra', 同行: false });
+
+  const syncBackgroundRelations = () => {
+    const text = 收集前史关系文本(state?.旅人.背景, state?.世界.自定义开局);
+    const seeds = 提取前史关系种子(text);
+    if (!seeds.length) {
+      setSyncNote('未从旅人背景里识别到明确的前史关系。');
+      return;
+    }
+    onNpcRecordsChange((prev) => 合并前史关系种子(prev, seeds));
+    setSyncNote(`已补齐 ${seeds.length} 条前史关系；下一回合开始时会写入存档。`);
+  };
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-y-auto overflow-x-hidden md:flex-row md:gap-4 md:overflow-hidden">
       {头像编辑 && state ? (
@@ -134,6 +147,23 @@ export function CompanionPanel({
             <div className="mt-3 text-[11px] leading-relaxed" style={{ color: mutedColor }}>
               关系规划：{relationshipPlanning.总览}
             </div>
+            {state ? (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={syncBackgroundRelations}
+                  className="w-full rounded-md border px-2 py-1 text-[11px]"
+                  style={{ borderColor: 'rgba(255,255,255,0.14)', color: accentColor, background: 'rgba(255,255,255,0.03)' }}
+                >
+                  从旅人背景补齐前史关系
+                </button>
+                {syncNote ? (
+                  <div className="mt-1 text-[10px] leading-relaxed" style={{ color: mutedColor }}>
+                    {syncNote}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
 

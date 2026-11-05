@@ -49,6 +49,20 @@ import {
 import { loadSetting, saveSetting } from './settings';
 import { hydratePersistedApiSettings } from '@/utils/apiSettingsHydration';
 import { startSaveCatalogRepair } from './catalogMaintenance';
+import {
+  allocateDiskSaveId,
+  diskDeleteManagedSaveItems,
+  diskFindAutoDeltaBase,
+  diskFindSaveIdByNodeId,
+  diskGetCatalogSnapshot,
+  diskLoadAssetRecords,
+  diskLoadRawSave,
+  diskMutate,
+  diskReadCatalogRecords,
+  diskRestoreDeltaSaveIfNeeded,
+  diskSerializeAssetRecords,
+  getSaveStorageMode,
+} from './saveDiskStore';
 import { isPlainRecord, normalizeNodeId, normalizeSaveId, toError } from '@/utils/storageUtils';
 
 export interface SaveGameOptions {
@@ -75,6 +89,9 @@ export async function saveGame(data: 存档数据, options?: SaveGameOptions): P
 }
 
 async function saveGameInternal(data: 存档数据, options?: SaveGameOptions): Promise<number> {
+  if (await getSaveStorageMode() === 'disk') {
+    return saveGameOnDisk(data, options);
+  }
   const sourceData = stripCloudBackupRestoreRuntime(data);
   const db = await openDB();
   const assetRecords = materializeSaveAssetRecords(extractSaveAssetRecords(sourceData));
@@ -129,11 +146,89 @@ async function saveGameInternal(data: 存档数据, options?: SaveGameOptions): 
   return saved.id;
 }
 
-export async function deleteManagedSaveItems(db: IDBDatabase, candidates: SaveListItemSummary[]): Promise<void> {
+async function saveGameOnDisk(data: 存档数据, options?: SaveGameOptions): Promise<number> {
+  const sourceData = stripCloudBackupRestoreRuntime(data);
+  const sourceTree = (sourceData as 存档数据 & { saveTree?: unknown }).saveTree;
+  const storedData = stripSaveAssetPayloadForStorage({
+    ...createSaveEnvelope(sourceData).gameData,
+    id: sourceData.id,
+    type: sourceData.type,
+    timestamp: sourceData.timestamp,
+    turnCount: sourceData.turnCount,
+    ...(sourceTree ? { saveTree: sourceTree } : {}),
+    ...((sourceData as StoredSaveMeta).saveRuntime
+      ? { saveRuntime: (sourceData as StoredSaveMeta).saveRuntime }
+      : {}),
+  });
+  const deltaBase = options?.forceFullStore ? null : await diskFindAutoDeltaBase(storedData);
+  const id = await allocateDiskSaveId();
+  const savedForDelta = { ...storedData, id } as 存档数据;
+  const saveRow = deltaBase
+    ? buildDeltaOnlyStoredSave(savedForDelta, deltaBase.baseSaveId)
+    : savedForDelta;
+  const assetRecords = await diskSerializeAssetRecords(
+    materializeSaveAssetRecords(extractSaveAssetRecords(savedForDelta)),
+  );
+  const delta = buildSaveNodeDeltaRecord(
+    savedForDelta,
+    id,
+    deltaBase
+      ? { baseSave: deltaBase.baseSave, baseSaveId: deltaBase.baseSaveId, storageMode: 'delta' }
+      : undefined,
+  );
+  await diskMutate({
+    puts: {
+      saves: [saveRow],
+      saveSummaries: [createCatalogRecordFromSummary(buildSaveSummary(savedForDelta))],
+      ...(delta ? { saveNodeDeltas: [delta] } : {}),
+      ...(assetRecords.length ? { saveAssets: assetRecords } : {}),
+    },
+  });
+  return id;
+}
+
+async function loadSaveOnDisk(id: number): Promise<存档数据 | null> {
+  const raw = await diskLoadRawSave(id);
+  if (!raw) return null;
+  const restored = await diskRestoreDeltaSaveIfNeeded(raw);
+  const saveForAssets = await hydrateStoredSave(restored);
+  if (saveHasEmbeddedAssetPayload(saveForAssets)) {
+    await migrateDiskEmbeddedAssets(saveForAssets);
+  }
+  const assetIds = collectSaveAlbumAssetIds(saveForAssets);
+  if (!assetIds.length) return saveForAssets;
+  const records = materializeSaveAssetRecords(await diskLoadAssetRecords(assetIds));
+  return restoreSaveAssetPayloadFromRecords(saveForAssets, records);
+}
+
+async function migrateDiskEmbeddedAssets(save: 存档数据): Promise<void> {
+  const records = await diskSerializeAssetRecords(
+    materializeSaveAssetRecords(extractSaveAssetRecords(save)),
+  );
+  if (!records.length) return;
+  const stored = stripSaveAssetPayloadForStorage(save);
+  const delta = buildSaveNodeDeltaRecord(stored, stored.id || 0);
+  await diskMutate({
+    puts: {
+      saves: [stored],
+      saveSummaries: [createCatalogRecordFromSummary(buildSaveSummary(stored))],
+      saveAssets: records,
+      ...(delta ? { saveNodeDeltas: [delta] } : {}),
+    },
+  });
+}
+
+export async function deleteManagedSaveItems(db: IDBDatabase | null, candidates: SaveListItemSummary[]): Promise<void> {
   if (!candidates.length) return;
+  if (await getSaveStorageMode() === 'disk') {
+    await diskDeleteManagedSaveItems(candidates);
+    return;
+  }
+  if (!db) throw new Error('删除存档需要 IndexedDB 连接。');
+  const database = db;
   const referencedBaseIds = await getReferencedDeltaBaseIds(db);
   await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction([SAVES_STORE, SAVE_SUMMARIES_STORE, SAVE_NODE_DELTAS_STORE], 'readwrite');
+    const tx = database.transaction([SAVES_STORE, SAVE_SUMMARIES_STORE, SAVE_NODE_DELTAS_STORE], 'readwrite');
     const saveStore = tx.objectStore(SAVES_STORE);
     const summaryStore = tx.objectStore(SAVE_SUMMARIES_STORE);
     for (const item of candidates) {
@@ -152,6 +247,9 @@ export async function deleteManagedSaveItems(db: IDBDatabase, candidates: SaveLi
 }
 
 export async function getSaveCatalogSnapshot(): Promise<SaveCatalogSnapshot> {
+  if (await getSaveStorageMode() === 'disk') {
+    return diskGetCatalogSnapshot();
+  }
   const db = await openDB();
   return readIndexedSaveCatalogSnapshot(db);
 }
@@ -163,6 +261,14 @@ export async function getSaveCatalogSnapshot(): Promise<SaveCatalogSnapshot> {
 export async function loadSaveIdByNodeId(nodeId: string): Promise<number | null> {
   const normalizedNodeId = normalizeNodeId(nodeId);
   if (!normalizedNodeId) return null;
+  if (await getSaveStorageMode() === 'disk') {
+    const records = await diskReadCatalogRecords();
+    const fromSummaries = records.find(
+      (item) => 'saveTree' in item && item.saveTree?.nodeId === normalizedNodeId,
+    );
+    if (fromSummaries) return fromSummaries.id;
+    return diskFindSaveIdByNodeId(normalizedNodeId);
+  }
   const db = await openDB();
   const summaries = await readSaveSummaries(db);
   const fromSummaries = summaries.find((item) => item.saveTree?.nodeId === normalizedNodeId);
@@ -234,6 +340,9 @@ async function hydrateStoredSave(save: 存档数据): Promise<存档数据> {
 }
 
 export async function loadSave(id: number): Promise<存档数据 | null> {
+  if (await getSaveStorageMode() === 'disk') {
+    return loadSaveOnDisk(id);
+  }
   const db = await openDB();
   const save = await loadRawSave(db, id);
   const restoredSave = save ? await restoreDeltaSaveIfNeeded(db, save) : null;
@@ -250,6 +359,16 @@ export async function loadSave(id: number): Promise<存档数据 | null> {
 }
 
 export async function loadSaveForCloudTransfer(id: number): Promise<CloudTransferSaveBundle | null> {
+  if (await getSaveStorageMode() === 'disk') {
+    const save = await loadSaveOnDisk(id);
+    if (!save) return null;
+    const assetIds = collectSaveAlbumAssetIds(save);
+    const records = new Map<string, SaveAssetRecord>();
+    for (const record of await diskLoadAssetRecords(assetIds)) {
+      if (record.id) records.set(record.id, record);
+    }
+    return { save, assetRecords: Array.from(records.values()) };
+  }
   const db = await openDB();
   const raw = await loadRawSave(db, id);
   const restoredRaw = raw ? await restoreDeltaSaveIfNeeded(db, raw) : null;
@@ -291,6 +410,10 @@ export async function deleteSave(id: number): Promise<void> {
 }
 
 async function deleteSaveInternal(id: number): Promise<void> {
+  if (await getSaveStorageMode() === 'disk') {
+    await diskDeleteManagedSaveItems([{ id }]);
+    return;
+  }
   const db = await openDB();
   const isReferencedBase = await isSaveReferencedAsDeltaBase(db, id);
   await new Promise<void>((resolve, reject) => {
@@ -326,7 +449,11 @@ function deleteDeltaBySaveId(deltaStore: IDBObjectStore, saveId: number): void {
   };
 }
 
-export async function findAutoDeltaBase(db: IDBDatabase, save: 存档数据): Promise<{ baseSave: 存档数据; baseSaveId: number } | null> {
+export async function findAutoDeltaBase(db: IDBDatabase | null, save: 存档数据): Promise<{ baseSave: 存档数据; baseSaveId: number } | null> {
+  if (await getSaveStorageMode() === 'disk') {
+    return diskFindAutoDeltaBase(save);
+  }
+  if (!db) throw new Error('解析增量基底需要 IndexedDB 连接。');
   if (save.type !== 'auto') return null;
   const tree = (save as 存档数据 & { saveTree?: import('@/utils/saveTree').存档树元信息 }).saveTree;
   if (!tree?.parentNodeId) return null;
@@ -426,6 +553,10 @@ function collectSaveAlbumAssetIds(save: 存档数据): string[] {
  */
 export async function 写入已落盘资产记录(records: SaveAssetRecord[]): Promise<void> {
   if (!records.length) return;
+  if (await getSaveStorageMode() === 'disk') {
+    await diskMutate({ puts: { saveAssets: await diskSerializeAssetRecords(records) } });
+    return;
+  }
   const db = await openDB();
   if (!db.objectStoreNames.contains(SAVE_ASSETS_STORE)) return;
   await new Promise<void>((resolve, reject) => {
@@ -448,6 +579,12 @@ export async function 写入已落盘资产记录(records: SaveAssetRecord[]): P
 export async function 读取已落盘资产记录(assetIds: string[]): Promise<Map<string, SaveAssetRecord>> {
   const 结果 = new Map<string, SaveAssetRecord>();
   if (!assetIds.length) return 结果;
+  if (await getSaveStorageMode() === 'disk') {
+    for (const 记录 of await diskLoadAssetRecords(assetIds)) {
+      if (记录.id) 结果.set(记录.id, 记录);
+    }
+    return 结果;
+  }
   const db = await openDB();
   if (!db.objectStoreNames.contains(SAVE_ASSETS_STORE)) return 结果;
   const records = await loadSaveAssetRecords(db, assetIds);
