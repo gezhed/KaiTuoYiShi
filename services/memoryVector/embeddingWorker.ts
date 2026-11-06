@@ -7,9 +7,10 @@
  * 只把文本转成归一化向量。
  */
 import { env, pipeline, type FeatureExtractionPipeline } from '@huggingface/transformers';
+import { resolveLocalModelPath } from './modelPath';
 
 env.allowLocalModels = true;
-env.localModelPath = '/models/';
+env.localModelPath = resolveLocalModelPath(import.meta.env.BASE_URL, self.location.href);
 env.useBrowserCache = true;
 // 不依赖 SharedArrayBuffer / crossOriginIsolated，单线程最稳。
 const wasmBackend = (env.backends as { onnx?: { wasm?: { numThreads?: number } } } | undefined)?.onnx?.wasm;
