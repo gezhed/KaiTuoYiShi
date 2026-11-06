@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { NPC记录, NPC阶位 } from '@/models/npc';
 import { 归一化NPC记录列表 } from '@/models/npc';
 import { 提取前史关系种子, 合并前史关系种子, 收集前史关系文本 } from '@/models/relationshipSeed';
+import { 补种NPC关系网 } from '@/models/npcRelationship';
 import type { 相册系统 } from '@/models/imageGeneration';
 import type { 智库系统 } from '@/models/zhiku';
 import type { UseGameStateReturn } from '@/hooks/useGameState';
@@ -45,6 +46,7 @@ export function CompanionPanel({
   npcRecords,
   onNpcRecordsChange,
   album,
+  turnCount,
   nsfwEnabled,
   maleNsfwArchiveEnabled = false,
   zhikuSystem,
@@ -104,6 +106,14 @@ export function CompanionPanel({
   const promoteToCompanion = (id: string) => updateRecord(id, { 阶位: 'companion' });
   const demoteToExtra = (id: string) => updateRecord(id, { 阶位: 'extra', 同行: false });
 
+  const removeRecord = (id: string) => {
+    const target = normalizedRecords.find((npc) => npc.id === id);
+    if (!target) return;
+    if (!confirm(`将「${target.姓名}」从伙伴档案中移除？只删除这一条人物记录，不影响其他内容。`)) return;
+    onNpcRecordsChange((prev) => prev.filter((npc) => npc.id !== id));
+    if (selectedId === id) setSelectedId(null);
+  };
+
   const syncBackgroundRelations = () => {
     const text = 收集前史关系文本(state?.旅人.背景, state?.世界.自定义开局);
     const seeds = 提取前史关系种子(text);
@@ -113,6 +123,16 @@ export function CompanionPanel({
     }
     onNpcRecordsChange((prev) => 合并前史关系种子(prev, seeds));
     setSyncNote(`已补齐 ${seeds.length} 条前史关系；下一回合开始时会写入存档。`);
+  };
+
+  const seedZhikuRelations = () => {
+    const entries = zhikuSystem?.条目 ?? [];
+    if (!entries.length) {
+      setSyncNote('资料库里还没有可用的角色关系。');
+      return;
+    }
+    onNpcRecordsChange((prev) => 补种NPC关系网(prev, entries, { force: true }));
+    setSyncNote('已按资料库补齐关系网；下一回合开始时会写入存档。');
   };
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-y-auto overflow-x-hidden md:flex-row md:gap-4 md:overflow-hidden">
@@ -157,6 +177,16 @@ export function CompanionPanel({
                 >
                   从旅人背景补齐前史关系
                 </button>
+                {zhikuSystem?.条目.length ? (
+                  <button
+                    type="button"
+                    onClick={seedZhikuRelations}
+                    className="mt-2 w-full rounded-md border px-2 py-1 text-[11px]"
+                    style={{ borderColor: 'rgba(255,255,255,0.14)', color: accentColor, background: 'rgba(255,255,255,0.03)' }}
+                  >
+                    从资料库补齐关系网
+                  </button>
+                ) : null}
                 {syncNote ? (
                   <div className="mt-1 text-[10px] leading-relaxed" style={{ color: mutedColor }}>
                     {syncNote}
@@ -203,9 +233,12 @@ export function CompanionPanel({
             nsfwEnabled={nsfwEnabled}
             onPromote={() => promoteToCompanion(selected.id)}
             onDemote={() => demoteToExtra(selected.id)}
+            onDelete={() => removeRecord(selected.id)}
+            onUpdateNpc={(patch) => updateRecord(selected.id, patch)}
             onToggleTraveling={() => updateRecord(selected.id, { 同行: !selected.同行 })}
             planning={selectedPlanning}
             devMode={devMode}
+            turnCount={turnCount}
             onEditAvatar={state ? (slot) => set头像编辑({
               npcId: selected.id,
               名称: selected.姓名,

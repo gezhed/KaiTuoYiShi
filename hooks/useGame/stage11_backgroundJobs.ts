@@ -13,6 +13,7 @@ import { 构造世界事实视图, type 世界事实视图 } from '@/services/st
 import { buildYitingArchiveEntry } from '@/services/yitingArchive';
 import { resolveApiConfig } from '@/services/apiConfig';
 import { buildFallbackPhoneSeed } from './phoneWorkflow';
+import { runMomentsJob } from './momentsWorkflow';
 import { 生成消息插图 } from './illustrationWorkflow';
 import { pushQueueTask } from './workflowTaskRuntime';
 import { isMemorySystemNoise, upsertRecallEntry } from './memoryUtils';
@@ -89,7 +90,7 @@ export function 判定正文配图门禁(
 ): { 放行: boolean; 原因?: string } {
   if (!文生图系统) return { 放行: false, 原因: '还没有文生图系统设置。' };
   if (!文生图系统.启用) return { 放行: false, 原因: '文生图总开关没有打开。' };
-  const 正文配图 = 文生图系统.正文配图;
+  const 正文配图 = (文生图系统 as { 正文配图?: 文生图系统设置['正文配图'] }).正文配图;
   if (!正文配图) return { 放行: false, 原因: '缺少正文配图设置。' };
   if (!正文配图.启用) return { 放行: false, 原因: '「正文自动配图」没有打开。' };
   if (正文配图.模式 !== 'auto') return { 放行: false, 原因: '正文配图当前是手动模式，自动生图不会触发。' };
@@ -346,6 +347,18 @@ export async function stage11_backgroundJobs(
     state, phoneAfterFallbackSeed: phoneAfterFallbackSeedBase, npcAfterCompression, userInput, displayText,
     skipPhoneSeeds: d.isPathAwakeningTurn === true, turnCountAtStart, queueTasksMirror,
   };
+  const momentsParams = {
+    state,
+    npcs: npcAfterCompression,
+    turn: turnCountAtStart + 1,
+    displayText,
+    userInput,
+    abortController,
+    skip: d.isPathAwakeningTurn === true,
+    assertWorkflowActive,
+    turnCountAtStart,
+    queueTasksMirror,
+  };
   const narrativeParams: NarrativeJobParams = {
     state, aiMsg, displayText, abortController, finalHistory,
     assertWorkflowActive, turnCountAtStart, queueTasksMirror,
@@ -381,14 +394,23 @@ export async function stage11_backgroundJobs(
     相册After = narrativeRes.相册After;
   }
 
+  const momentsRes = await runMomentsJob({
+    ...momentsParams,
+    phone: phoneAfterFallbackSeed,
+    skip: momentsParams.skip,
+  });
+  const phoneAfterMoments = momentsRes.phoneAfterMoments ?? phoneAfterFallbackSeed;
+  const memoryAfterMoments = momentsRes.memoryAfterMoments;
+
   devLog('stage', 'stage11_backgroundJobs.exit', {
     turn: turnCountAtStart,
-    outputs: ['newsAfterGeneration', 'yitingAfterTurnRecall', 'phoneAfterFallbackSeed', 'finalHistoryForSave', '相册After'],
+    outputs: ['newsAfterGeneration', 'yitingAfterTurnRecall', 'phoneAfterFallbackSeed', 'memoryAfterMoments', 'finalHistoryForSave', '相册After'],
   });
   return {
     newsAfterGeneration,
     yitingAfterTurnRecall,
-    phoneAfterFallbackSeed,
+    phoneAfterFallbackSeed: phoneAfterMoments,
+    memoryAfterMoments,
     finalHistoryForSave,
     相册After,
   };

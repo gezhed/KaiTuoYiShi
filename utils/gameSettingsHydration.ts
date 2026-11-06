@@ -117,7 +117,7 @@ export function 归一化游戏设置(settings: 游戏设置): 游戏设置 {
     记忆系统: 归一化记忆系统设置(settings.记忆系统),
     文生图系统: 归一化文生图系统设置(settings.文生图系统),
     // 后加的开关，旧存档没有这一块；缺省时回退默认（关闭），不能留 undefined。
-    逐句推进: { ...创建默认游戏设置().逐句推进, ...(settings.逐句推进 ?? {}) },
+    逐句推进: { ...创建默认游戏设置().逐句推进, ...settings.逐句推进 },
     visualTextSettings: 归一化视觉文本设置(settings.visualTextSettings),
     额外功能: 归一化额外功能设置(settings.额外功能),
   };
@@ -176,6 +176,7 @@ export function hydratePersistedGameSettings(input: unknown): HydratedGameSettin
     visualTextSettings: 归一化视觉文本设置(partialSavedGame.visualTextSettings),
     promptModules: migratePromptModules(savedGameWithoutV1Preset),
   };
+
   if (merged.promptModules.some((m) => m.id === 'legacy_custom')) {
     (merged as { customPrompt?: string }).customPrompt = '';
   }

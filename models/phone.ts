@@ -1,5 +1,7 @@
 import type { VariableExecContext } from '@/utils/variableExecContext';
 import { DEFAULT_EXEC_CTX } from '@/utils/variableExecContext';
+import type { 朋友圈动态 } from './moments';
+import { 归一化朋友圈动态 } from './moments';
 
 export type 手机会话类型 = 'private' | 'group' | 'system';
 export type 手机消息角色 = 'player' | 'contact' | 'system';
@@ -94,6 +96,10 @@ export interface 手机系统 {
   chats: 手机会话[];
   messageSeeds: 主动来信种子[];
   unreadTotal: number;
+  /** 朋友圈动态，按时间从旧到新；只保留最近 60 条。 */
+  朋友圈动态?: 朋友圈动态[];
+  /** 下一次尝试生成朋友圈的回合；由运行时维护。 */
+  朋友圈下次回合?: number;
   wallpapers?: {
     home?: string;
     chat?: string;
@@ -194,6 +200,7 @@ export function 创建空手机系统(): 手机系统 {
     chats: [],
     messageSeeds: [],
     unreadTotal: 0,
+    朋友圈动态: [],
     wallpapers: {},
   };
 }
@@ -290,6 +297,11 @@ export function 归一化手机系统(input?: Partial<手机系统> | null, ctx?
     chats: normalizedChats,
     messageSeeds: normalizedSeeds,
     unreadTotal: 计算手机未读({ chats: normalizedChats, messageSeeds: normalizedSeeds }),
+    朋友圈动态: 归一化朋友圈动态(input?.朋友圈动态),
+    朋友圈下次回合:
+      typeof input?.朋友圈下次回合 === 'number' && Number.isFinite(input.朋友圈下次回合)
+        ? Math.max(0, Math.floor(input.朋友圈下次回合))
+        : undefined,
     wallpapers: 归一化手机壁纸((input as { wallpapers?: unknown; 壁纸?: unknown } | null | undefined)?.wallpapers ?? (input as { 壁纸?: unknown } | null | undefined)?.壁纸),
   };
 }

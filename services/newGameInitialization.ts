@@ -27,6 +27,7 @@ import type { 工作区字段集 } from '@/models/newestStory';
 import { deriveOpeningDraftContext, type OpeningPresetDraft } from '@/models/opening';
 import { 创建命途进度 } from '@/models/path';
 import { 归一化战技记录 } from '@/models/skill';
+import { 补种NPC关系网 } from '@/models/npcRelationship';
 
 export type CreateInitialWorkspaceInput =
   | { mode: 'fresh'; draft: OpeningPresetDraft; current: 工作区字段集; bundledStoryWeaving: 剧情编织系统 | null }
@@ -59,9 +60,10 @@ function resolveFreshPieces(
   bundledStoryWeaving: 剧情编织系统 | null,
 ): 新局组装件 {
   const base = buildFreshOpeningState(draft);
+  const npcRecords = 补种NPC关系网(base.npcRecords, current.智库?.条目);
   const baseline = bundledStoryWeaving ?? current.剧情编织 ?? 创建空剧情编织系统();
   const storyWeaving = alignStoryWeavingToOpeningArchive(baseline, base.openingArchive);
-  return { ...base, storyWeaving };
+  return { ...base, npcRecords, storyWeaving };
 }
 
 function resolveRestartPieces(current: 工作区字段集): 新局组装件 {

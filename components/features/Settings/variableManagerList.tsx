@@ -1,12 +1,13 @@
 import { summarizeArrayItemLabel } from '@/utils/variableManagerLogic';
 import { cardClip, smallClip } from './settingsShared';
 
-export function ArrayItemList({ items, search, onSearch, activeIndex, onSelect, accent }: {
+export function ArrayItemList({ items, search, onSearch, activeIndex, onSelect, onDelete, accent }: {
   items: unknown[];
   search: string;
   onSearch: (v: string) => void;
   activeIndex: number;
   onSelect: (i: number) => void;
+  onDelete?: (i: number) => void;
   accent: string;
 }) {
   const query = search.trim().toLowerCase();
@@ -44,27 +45,49 @@ export function ArrayItemList({ items, search, onSearch, activeIndex, onSelect, 
           filtered.map(({ index, label }) => {
             const active = index === activeIndex;
             return (
-              <button
+              <div
                 key={index}
-                onClick={() => onSelect(index)}
-                className="mb-1 w-full px-2.5 py-2 text-left transition-all"
-                style={{
-                  background: active
-                    ? 'linear-gradient(135deg, rgba(var(--tj-tech-cyan), 0.24), rgba(var(--tj-accent-primary), 0.08))'
-                    : 'rgba(var(--tj-bg-secondary), 0.34)',
-                  border: active
-                    ? `inset 3px 0 0 ${accent}, inset 0 0 0 1px rgba(var(--tj-tech-cyan), 0.56)`
-                    : '1px solid rgba(var(--tj-accent-primary), var(--tj-edge-tint-weak))',
-                  clipPath: smallClip,
-                }}
+                className="mb-1 flex items-stretch gap-1"
               >
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[10px]" style={{ color: 'rgba(var(--tj-text-secondary),0.5)' }}>{index}</span>
-                  <span className="min-w-0 flex-1 truncate font-serif text-[13px] font-bold" style={{ color: active ? accent : 'rgb(var(--tj-text-primary))' }}>
-                    {label}
-                  </span>
-                </div>
-              </button>
+                <button
+                  onClick={() => onSelect(index)}
+                  className="min-w-0 flex-1 px-2.5 py-2 text-left transition-all"
+                  style={{
+                    background: active
+                      ? 'linear-gradient(135deg, rgba(var(--tj-tech-cyan), 0.24), rgba(var(--tj-accent-primary), 0.08))'
+                      : 'rgba(var(--tj-bg-secondary), 0.34)',
+                    border: active
+                      ? `inset 3px 0 0 ${accent}, inset 0 0 0 1px rgba(var(--tj-tech-cyan), 0.56)`
+                      : '1px solid rgba(var(--tj-accent-primary), var(--tj-edge-tint-weak))',
+                    clipPath: smallClip,
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px]" style={{ color: 'rgba(var(--tj-text-secondary),0.5)' }}>{index}</span>
+                    <span className="min-w-0 flex-1 truncate font-serif text-[13px] font-bold" style={{ color: active ? accent : 'rgb(var(--tj-text-primary))' }}>
+                      {label}
+                    </span>
+                  </div>
+                </button>
+                {onDelete ? (
+                  <button
+                    type="button"
+                    title="删除这一条"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onDelete(index);
+                    }}
+                    className="shrink-0 px-2 font-serif text-[13px] transition-all hover:bg-[rgba(var(--tj-danger),0.12)]"
+                    style={{
+                      color: 'rgba(var(--tj-danger), 0.92)',
+                      border: '1px solid rgba(var(--tj-danger), var(--tj-edge-tint))',
+                      clipPath: smallClip,
+                    }}
+                  >
+                    ×
+                  </button>
+                ) : null}
+              </div>
             );
           })
         )}

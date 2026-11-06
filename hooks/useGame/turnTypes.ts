@@ -130,6 +130,7 @@ export interface TurnDeltas {
   newsAfterGeneration?: 新闻条目[] | null;
   yitingAfterTurnRecall?: 忆庭系统;
   phoneAfterFallbackSeed?: 手机系统;
+  memoryAfterMoments?: 记忆系统 | null;
   finalHistoryForSave?: 聊天消息[];
   相册After?: 相册系统;
 

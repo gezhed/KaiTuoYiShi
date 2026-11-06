@@ -42,7 +42,7 @@ import {
   selectAutoSeed,
 } from '@/utils/phone';
 
-export type PhoneApp = 'messages' | 'contacts' | 'news' | 'wallpapers';
+export type PhoneApp = 'messages' | 'contacts' | 'news' | 'wallpapers' | 'moments';
 export type MobilePhoneView = 'list' | 'chat' | 'contact';
 export type MessageListMode = 'private' | 'group';
 

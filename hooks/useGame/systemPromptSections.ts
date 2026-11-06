@@ -22,6 +22,7 @@ import {
   MAIN_SHORT_TERM_MEMORY_PROMPT_LIMIT,
 } from './historyWindow';
 import { getAnticipatedNpcNamesForTurn } from './npcPresence';
+import { getNsfwEligibility } from '@/utils/nsfwArchivePolicy';
 
 export function normalizeMemoryFingerprint(text: string): string {
   return text
@@ -68,6 +69,13 @@ export function formatMemoryRecallSection(injection?: string): string {
   const content = injection?.trim();
   if (!content) return '';
   return `# 记忆｜相关回忆\n\n${content}`;
+}
+
+/** 角色记忆（Phase 1）：按在场角色分节；没有内容时返回空串。 */
+export function formatCharacterMemorySection(injection?: string): string {
+  const content = injection?.trim();
+  if (!content) return '';
+  return `# 角色记忆\n\n${content}`;
 }
 
 export interface LayeredMemoryLimits {
@@ -815,4 +823,35 @@ export function buildStoryArrangementSection(
   }
   if (declaration) lines.push(declaration);
   return lines.join('\n\n');
+}
+
+export function buildNsfwEligibilitySection(npcRecords: NPC记录[] | undefined): string {
+  const records = (npcRecords ?? []).filter((npc) =>
+    npc.阶位 === 'companion' || npc.同行 || npc.原著角色 === true || Boolean(npc.NSFW档案),
+  );
+  if (!records.length) return '';
+  const allowed: string[] = [];
+  const blocked: string[] = [];
+  for (const npc of records.slice(0, 40)) {
+    const eligibility = getNsfwEligibility(npc);
+    if (eligibility.allowed) {
+      allowed.push(npc.姓名);
+    } else {
+      const reason = eligibility.age === 'minor_blocked'
+        ? '已标记未成年/禁止'
+        : eligibility.level === 'unconfirmed'
+          ? '年龄未确认'
+          : eligibility.reason.slice(0, 40);
+      blocked.push(`${npc.姓名}（${reason}）`);
+    }
+  }
+  if (!allowed.length && !blocked.length) return '';
+  return [
+    '# NSFW 角色资格（代码门禁）',
+    '',
+    `- 允许作为成人向剧情对象：${allowed.length ? allowed.join('、') : '无'}`,
+    `- 禁止 / 待确认：${blocked.length ? blocked.join('、') : '无'}`,
+    '- 只有“允许”的角色可以进入成人向内容；禁止或待确认角色不得被写成成年，也不得绕过门禁。',
+    '- 这是代码层判定结果，不要自行改写角色的年龄或资格。',
+  ].join('\n');
 }

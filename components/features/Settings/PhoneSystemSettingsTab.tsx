@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import type { AI提供商, API配置项, API设置, 游戏设置 } from '@/models/settings';
 import type { ConnectionTestConfig } from '@/hooks/useAiTools';
 import { resolveMainApiConfig } from '@/services/apiConfig';
@@ -161,6 +161,92 @@ export function PhoneSystemSettingsTab({ settings, onChange, apiSettings, onPers
           style={{ clipPath: smallClip }}
         />
       </Field>
+
+      <div
+        className="mt-2 px-4 py-3 text-xs leading-relaxed"
+        style={{
+          color: 'rgba(var(--tj-text-secondary), 0.78)',
+          background: 'rgba(var(--tj-accent-primary), 0.05)',
+          border: '1px solid rgba(var(--tj-accent-primary), var(--tj-edge-tint-weak))',
+          clipPath: cardClip,
+        }}
+      >
+        <div className="mb-1 font-serif text-[13px] tracking-[0.18em]" style={{ color: 'rgb(var(--tj-accent-primary))' }}>
+          朋友圈
+        </div>
+        每过几个回合，从通讯录里随机抽几名不在场的角色发动态，作为主线之外的生活补充。动态会按关系网决定哪些角色知道，并可并入记忆与角色记忆。
+      </div>
+
+      <ToggleRow
+        label="启用朋友圈"
+        desc="关闭后不再生成新动态，已有动态仍可在手机里查看。"
+        checked={phone.朋友圈启用}
+        onChange={(v) => patch({ 朋友圈启用: v })}
+      />
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field label="最短间隔（回合）">
+          <input
+            type="number"
+            min={1}
+            max={10}
+            value={phone.朋友圈间隔最小}
+            onChange={(e) => patch({ 朋友圈间隔最小: Number(e.target.value) })}
+            className="kaituo-input w-full px-3 py-2 text-sm"
+            style={{ clipPath: smallClip }}
+          />
+        </Field>
+        <Field label="最长间隔（回合）">
+          <input
+            type="number"
+            min={1}
+            max={10}
+            value={phone.朋友圈间隔最大}
+            onChange={(e) => patch({ 朋友圈间隔最大: Number(e.target.value) })}
+            className="kaituo-input w-full px-3 py-2 text-sm"
+            style={{ clipPath: smallClip }}
+          />
+        </Field>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field label="每次最少人数">
+          <input
+            type="number"
+            min={1}
+            max={6}
+            value={phone.朋友圈人数最小}
+            onChange={(e) => patch({ 朋友圈人数最小: Number(e.target.value) })}
+            className="kaituo-input w-full px-3 py-2 text-sm"
+            style={{ clipPath: smallClip }}
+          />
+        </Field>
+        <Field label="每次最多人数">
+          <input
+            type="number"
+            min={1}
+            max={6}
+            value={phone.朋友圈人数最大}
+            onChange={(e) => patch({ 朋友圈人数最大: Number(e.target.value) })}
+            className="kaituo-input w-full px-3 py-2 text-sm"
+            style={{ clipPath: smallClip }}
+          />
+        </Field>
+      </div>
+
+      <ToggleRow
+        label="朋友圈并入记忆"
+        desc="开启后，动态会作为“被告知”事件写入记忆，知情角色会形成角色记忆；关闭则只保留动态本身。"
+        checked={phone.朋友圈并入记忆}
+        onChange={(v) => patch({ 朋友圈并入记忆: v })}
+      />
+
+      <ToggleRow
+        label="朋友圈调用文生图"
+        desc="开启后，每批动态里最多挑一条带配图描述的，用文生图生成一张生活照；需要先在文生图设置里启用出图渠道。失败时只保留文字动态。"
+        checked={phone.朋友圈生图启用}
+        onChange={(v) => patch({ 朋友圈生图启用: v })}
+      />
 
       <div className="grid gap-3 md:grid-cols-2">
         <Field label="私聊本地压缩阈值">

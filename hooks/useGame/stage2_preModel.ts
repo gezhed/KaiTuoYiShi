@@ -8,6 +8,7 @@ import { formatOriginalProtagonistForOpening } from './mainResponseProtocol';
 import { retrieveYitingContextWithModel } from '@/services/yitingRetrieval';
 import { retrieveZhikuContextWithModel } from '@/services/zhikuRetrieval';
 import { recallMemoryEvents } from '@/services/memoryVector/memoryVectorRecall';
+import { buildCharacterMemoryInjection, markCharacterMemoryInjected } from '@/services/memoryCharacterRecall';
 import { resolveApiConfig } from '@/services/apiConfig';
 import { evaluateStoryWeavingGate, getStoryWeavingInjectionDiagnostics } from '@/services/storyWeaving';
 import { selectNpcLedgersForTurn } from '@/models/npc';
@@ -153,6 +154,29 @@ export async function stage2_preModel(
   ]);
   assertWorkflowActive();
 
+  const characterMemoryEnabled = !isOpeningSystemTrigger
+    && state.deviceSettings.gameSettings.enableMemoryInjection
+    && memorySettings?.角色记忆启用 !== false
+    && (state.记忆.角色记忆?.length ?? 0) > 0;
+  const characterMemory = characterMemoryEnabled
+    ? buildCharacterMemoryInjection({
+        records: state.NPC,
+        links: state.记忆.角色记忆 ?? [],
+        events: state.记忆.事件 ?? [],
+        names: worldbookCtx.npcNames ?? [],
+        query: recallQuery,
+        currentTurn: state.turnCount,
+        perCharacterLimit: memorySettings?.角色记忆每角色条数 ?? 3,
+        budget: memorySettings?.角色记忆注入字数 ?? 900,
+        history: state.记忆.注入历史 ?? [],
+        suppressTurns: memorySettings?.角色记忆抑制回合 ?? 2,
+        acts: state.记忆.幕记忆 ?? [],
+        未了之事启用: memorySettings?.未了之事启用 ?? true,
+        未了之事条数: memorySettings?.未了之事条数 ?? 5,
+      })
+    : { injection: '', characters: [], marks: [] };
+  markCharacterMemoryInjected(characterMemory.marks);
+
   const recallSummaryForTurn = [
     formatZhikuRecallSummary(zhikuPreview?.diagnostics),
     formatYitingRecallSummary(yitingPreview?.previewText),
@@ -162,13 +186,14 @@ export async function stage2_preModel(
     zhikuPreview?.injection ? ['【智库完整召回】', zhikuPreview.injection].join('\n') : '',
     yitingPreview?.injection ? ['【记忆完整召回】', yitingPreview.injection].join('\n') : '',
     memoryVectorPreview?.injection ? ['【向量回忆】', memoryVectorPreview.injection].join('\n') : '',
+    characterMemory.injection ? ['【角色记忆】', characterMemory.injection].join('\n') : '',
   ].filter(Boolean).join('\n\n');
   state.activeWorkflow.setLiveRecallSummary(recallSummaryForTurn);
   state.activeWorkflow.setLiveRecallFullContent(recallFullContentForTurn);
 
   const memoryHint = isOpeningSystemTrigger
     ? '开局专用上下文已注入：角色 / 场景 / 切入说明 / 开局世界书 / 开局 CoT'
-    : state.deviceSettings.gameSettings.enableMemoryInjection ? `记忆上下文已注入：短期 ${state.记忆.短期记忆.length} 条 / 中期 ${(midTermMemories ?? []).length} 条 / 长期 ${state.记忆.长期记忆.length} 条${yitingPreview?.injection ? '；剧情回忆已命中并并存注入' : ''}${memoryVectorPreview?.hits.length ? `；向量回忆 ${memoryVectorPreview.hits.length} 条` : ''}；即时缓存 ${state.记忆.即时记忆.length} 条仅用于后续压缩`
+    : state.deviceSettings.gameSettings.enableMemoryInjection ? `记忆上下文已注入：短期 ${state.记忆.短期记忆.length} 条 / 中期 ${(midTermMemories ?? []).length} 条 / 长期 ${state.记忆.长期记忆.length} 条${yitingPreview?.injection ? '；剧情回忆已命中并并存注入' : ''}${memoryVectorPreview?.hits.length ? `；向量回忆 ${memoryVectorPreview.hits.length} 条` : ''}${characterMemory.characters.length ? `；角色记忆 ${characterMemory.characters.map((item) => `${item.name} ${item.count} 条`).join(' / ')}` : ''}；即时缓存 ${state.记忆.即时记忆.length} 条仅用于后续压缩`
     : '记忆上下文已跳过';
   const yitingHint = !yitingEnabled ? '忆庭召回已关闭'
     : yitingPreview?.entries.length ? `剧情回忆已召回：强 ${yitingPreview.strongEntries?.length ?? 0} 条 / 弱 ${yitingPreview.weakEntries?.length ?? 0} 条`
@@ -217,6 +242,7 @@ export async function stage2_preModel(
     yitingInjectionOverride: storyRecallInjection || (yitingRecallEnabled ? '' : undefined),
     zhikuInjectionOverride: zhikuRecallEnabled ? (zhikuPreview?.injection ?? '') : undefined,
     memoryRecallInjection: memoryVectorPreview?.injection ?? '',
+    characterMemoryInjection: characterMemory.injection,
     npcLedgerSelection,
     triggerType: currentTriggerType,
     macroCtx,

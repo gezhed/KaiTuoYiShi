@@ -2,6 +2,7 @@ import { usePhone, type PhoneModalProps } from '@/hooks/usePhone';
 
 import { ContactsApp } from './ContactsApp';
 import { MessagesApp } from './MessagesApp';
+import { MomentsApp } from './MomentsApp';
 import { NewsApp } from './NewsApp';
 import { PhoneHome } from './PhoneHome';
 import { WallpaperApp } from './WallpaperApp';
@@ -12,6 +13,7 @@ const APP_TITLES = {
   contacts: ['通讯录', 'CONTACTS'],
   news: ['星际和平周报', 'NEWS FEED'],
   wallpapers: ['壁纸', 'WALLPAPER'],
+  moments: ['朋友圈', 'MOMENTS'],
 } as const;
 
 export function PhoneModal(props: PhoneModalProps) {
@@ -58,6 +60,7 @@ export function PhoneModal(props: PhoneModalProps) {
               unread={state.unreadTotal}
               contactCount={state.contacts.length}
               chatCount={state.chatCount}
+              momentCount={props.phone.朋友圈动态?.length ?? 0}
               activeApp={state.activeApp}
               onOpen={actions.openApp}
               onClose={props.onClose}
@@ -115,6 +118,8 @@ export function PhoneModal(props: PhoneModalProps) {
                 <ContactsApp state={state} actions={actions} />
               ) : state.activeApp === 'news' ? (
                 <NewsApp news={props.news} />
+              ) : state.activeApp === 'moments' ? (
+                <MomentsApp moments={props.phone.朋友圈动态 ?? []} />
               ) : (
                 <WallpaperApp state={state} actions={actions} />
               )}

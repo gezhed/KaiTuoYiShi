@@ -9,6 +9,7 @@ import { NPC_MEMORY_WRITE_RULE_PROMPT } from '@/data/variableWorldbook';
 import { retrieveYitingContext, buildYitingRecallSystemPrompt } from '@/services/yitingRetrieval';
 import { buildZhikuModelSystemPrompt, buildZhikuModelUserPrompt, retrieveZhikuContext } from '@/services/zhikuRetrieval';
 import { selectNpcLedgersForTurn } from '@/models/npc';
+import { 判断角色记忆清晰度, 解释角色记忆命中 } from '@/models/characterMemory';
 import { estimateTextTokens } from '@/utils/tokenEstimate';
 import { snapshotVariableState } from '@/utils/variableExecutor';
 import {
@@ -171,6 +172,59 @@ function formatMemoryVectorSnapshot(state: UseGameStateReturn): string {
     `本地状态：${status.status}${status.error ? `（${status.error}）` : ''}`,
     `可检索事件：${(state.记忆.事件 ?? []).length} 条`,
     `参数：TopK ${settings.向量召回TopK}｜最低相似度 ${settings.向量召回最低相似度}｜预算 ${settings.向量召回注入字数} 字`,
+  ].join('\n');
+}
+
+function formatCharacterMemorySnapshot(state: UseGameStateReturn, query = ''): string {
+  const settings = state.deviceSettings.gameSettings.记忆系统;
+  const links = state.记忆.角色记忆 ?? [];
+  const events = state.记忆.事件 ?? [];
+  const eventsById = new Map(events.map((event) => [event.id, event]));
+  const byRole = new Map<string, number>();
+  for (const link of links) byRole.set(link.角色, (byRole.get(link.角色) ?? 0) + 1);
+  const top = [...byRole.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([name, count]) => `${name} ${count}`)
+    .join('、') || '无';
+  const alive = new Set(events.map((event) => event.id));
+  const orphan = links.filter((link) => !alive.has(link.事件ID)).length;
+  const clarity = { 细节: 0, 画面: 0, 标签: 0, 影子: 0 };
+  for (const link of links) {
+    const event = eventsById.get(link.事件ID);
+    if (!event) continue;
+    clarity[判断角色记忆清晰度(link, event, state.turnCount)] += 1;
+  }
+  const explain = [...byRole.keys()]
+    .slice(0, 3)
+    .map((role) => {
+      const rows = 解释角色记忆命中({
+        links,
+        events,
+        role,
+        query,
+        currentTurn: state.turnCount,
+        history: state.记忆.注入历史,
+        suppressTurns: settings.角色记忆抑制回合,
+      }).slice(0, 3);
+      if (rows.length === 0) return `${role}：无可召回`;
+      const detail = rows
+        .map((row) => `第${row.event.回合}回合/${row.clarity}/重要${row.importance.toFixed(2)}/相关${row.relevance.toFixed(2)}/分${row.score.toFixed(2)}${row.suppressed ? '/已抑制' : ''}`)
+        .join('；');
+      return `${role}：${detail}`;
+    })
+    .join('\n');
+  return [
+    `启用：${settings.角色记忆启用 ? '是' : '否'}`,
+    `链接总数：${links.length}`,
+    `覆盖角色：${byRole.size} 人`,
+    `分布：${top}`,
+    `清晰度：细节 ${clarity.细节}｜画面 ${clarity.画面}｜标签 ${clarity.标签}｜影子 ${clarity.影子}`,
+    `幕记忆：${(state.记忆.幕记忆 ?? []).length} 幕｜注入历史：${(state.记忆.注入历史 ?? []).length} 条`,
+    `指向已淘汰事件的链接：${orphan}`,
+    `参数：每角色 ${settings.角色记忆每角色条数} 条｜预算 ${settings.角色记忆注入字数} 字｜抑制 ${settings.角色记忆抑制回合} 回合｜未了之事 ${settings.未了之事启用 ? `最多 ${settings.未了之事条数} 条` : '关闭'}`,
+    `召回解释（按链接数前 3 名角色）：`,
+    explain || '（无）',
   ].join('\n');
 }
 
@@ -456,6 +510,14 @@ function buildMainContextSnapshot(state: UseGameStateReturn): ContextSnapshot {
     title: '记忆事件台账（Phase 0）',
     category: '诊断',
     content: formatMemoryEventLedger(state),
+    upload: false,
+    diagnostic: true,
+  });
+  addSection(sections, {
+    id: 'memory_character_links',
+    title: '角色记忆链接（Phase 1）',
+    category: '诊断',
+    content: formatCharacterMemorySnapshot(state, recallQuery),
     upload: false,
     diagnostic: true,
   });

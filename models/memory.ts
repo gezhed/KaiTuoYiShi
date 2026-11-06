@@ -1,4 +1,6 @@
+import { 归一化角色记忆, 归一化记忆注入记录, type 角色记忆链接, type 记忆注入记录 } from './characterMemory';
 import { 归一化记忆事件, type 记忆事件 } from './memoryEvent';
+import { 归一化幕记忆, type 幕记忆 } from './memoryAct';
 
 export type 记忆压缩层级 = 'short' | 'middle' | 'long';
 export type 记忆失败代码 = 'request_failed' | 'empty_output' | 'source_changed';
@@ -28,6 +30,12 @@ export interface 记忆系统 {
   失败草稿: 记忆失败草稿[];
   /** Phase 0 事件台账：与四层滚动记忆并存，Phase 1 再迁到独立顶层字段。 */
   事件?: 记忆事件[];
+  /** Phase 1 角色记忆：事件 × 角色的知情/视角链接。 */
+  角色记忆?: 角色记忆链接[];
+  /** Phase 2 最近提及抑制：记录最近注入过的“事件 × 角色”。 */
+  注入历史?: 记忆注入记录[];
+  /** Phase 2 每幕整理：旧幕的压缩印象，事件本身仍保留。 */
+  幕记忆?: 幕记忆[];
 }
 
 export const MEMORY_DRAFT_MAX_PENDING = 3;
@@ -65,6 +73,9 @@ export function 创建空记忆系统(): 记忆系统 {
     长期记忆: [],
     失败草稿: [],
     事件: [],
+    角色记忆: [],
+    注入历史: [],
+    幕记忆: [],
   };
 }
 
@@ -228,6 +239,9 @@ export function 归一化记忆系统(input?: unknown): { value: 记忆系统; i
     长期记忆: 归一化字符串数组(raw.长期记忆, '长期记忆', issues),
     失败草稿: 剪裁记忆草稿(归一化记忆草稿(raw.失败草稿, issues)),
     事件: 归一化记忆事件(raw.事件, issues),
+    角色记忆: 归一化角色记忆(raw.角色记忆, issues),
+    注入历史: 归一化记忆注入记录(raw.注入历史, issues),
+    幕记忆: 归一化幕记忆(raw.幕记忆, issues),
   };
   return { value, issues };
 }

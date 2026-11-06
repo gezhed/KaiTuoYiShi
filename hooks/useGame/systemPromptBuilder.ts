@@ -43,7 +43,9 @@ import {
   buildWeatherSection,
   buildWordCountSection,
   splitLayeredMemory,
+  formatCharacterMemorySection,
   formatMemoryRecallSection,
+  buildNsfwEligibilitySection,
 } from './systemPromptSections';
 
 export type { BuiltSystemPrompt, ChatModuleMessage, SystemPromptInput, 命途狭间阶段 };
@@ -164,9 +166,11 @@ export function buildSystemPrompt(input: SystemPromptInput): BuiltSystemPrompt {
     buildNpcLedgerContinuitySection(npcLedger),
     buildNpcContinuitySection(input.world, input.npcRecords, input.turnCount, input.worldbookCtx?.npcNames),
     buildCompanionsSection(input.npcRecords, input.turnCount),
+    input.settings.enableNsfw ? buildNsfwEligibilitySection(input.npcRecords) : '',
     renderPlanGroup(plan?.keywordEntries ?? [], input.worldbookCtx, '世界书'),
     zhikuSection,
     memory.short,
+    formatCharacterMemorySection(input.characterMemoryInjection),
     formatMemoryRecallSection(input.memoryRecallInjection),
     yitingSection,
     buildStyleAssistantSection(input.modules),

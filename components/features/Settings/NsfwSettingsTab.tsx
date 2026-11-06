@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import type { 游戏设置 } from '@/models/settings';
 import type { 提示词模块 } from '@/models/prompts';
 import { badgeClip, mediumClip, smallClip, tinyClip } from '@/components/ui/clipPaths';
@@ -13,6 +13,15 @@ interface Props {
 function setModuleEnabled(modules: 提示词模块[], id: string, v: boolean): 提示词模块[] {
   return modules.map((m) => (m.id === id ? { ...m, enabled: v, updatedAt: Date.now() } : m));
 }
+
+const JAILBREAK_VARIANTS = [
+  { id: 'builtin_anti_refusal_generic', label: '通用' },
+  { id: 'builtin_anti_refusal_claude', label: 'Claude' },
+  { id: 'builtin_anti_refusal_gemini', label: 'Gemini' },
+  { id: 'builtin_anti_refusal_gpt', label: 'GPT' },
+  { id: 'builtin_anti_refusal_deepseek', label: 'DeepSeek' },
+  { id: 'builtin_anti_refusal_local', label: '本地模型' },
+] as const;
 
 export function NsfwSettingsTab({ settings, onChange, onPersistSettings }: Props) {
   const [saveMessage, setSaveMessage] = useState('');
@@ -29,6 +38,10 @@ export function NsfwSettingsTab({ settings, onChange, onPersistSettings }: Props
     }
   };
 
+  const selectedJailbreak = JAILBREAK_VARIANTS.find((variant) =>
+    settings.promptModules.some((module) => module.id === variant.id && module.enabled),
+  )?.id;
+
   const updateNsfw = (enabled: boolean) => {
     onChange({
       ...settings,
@@ -36,6 +49,14 @@ export function NsfwSettingsTab({ settings, onChange, onPersistSettings }: Props
       enableMaleNsfwArchive: enabled ? settings.enableMaleNsfwArchive : false,
       promptModules: setModuleEnabled(settings.promptModules, 'builtin_nsfw', enabled),
     });
+  };
+
+  const selectJailbreak = (id: string) => {
+    let modules = settings.promptModules;
+    for (const variant of JAILBREAK_VARIANTS) {
+      modules = setModuleEnabled(modules, variant.id, variant.id === id);
+    }
+    onChange({ ...settings, promptModules: modules });
   };
 
   return (
@@ -70,6 +91,53 @@ export function NsfwSettingsTab({ settings, onChange, onPersistSettings }: Props
         disabled={!settings.enableNsfw}
         onChange={(v) => onChange({ ...settings, enableMaleNsfwArchive: v })}
       />
+
+      <div
+        className="px-4 py-4"
+        style={{
+          background: 'rgba(var(--tj-bg-secondary), 0.45)',
+          border: '1px solid rgba(var(--tj-accent-primary), var(--tj-edge-tint-weak))',
+          clipPath: smallClip,
+          opacity: settings.enableNsfw ? 1 : 0.58,
+        }}
+      >
+        <div className="font-serif text-sm font-bold tracking-[0.18em]" style={{ color: 'rgb(var(--tj-text-primary))' }}>
+          破甲方案（按模型选择）
+        </div>
+        <div className="mt-1 text-xs leading-relaxed" style={{ color: 'rgba(var(--tj-text-secondary), 0.72)' }}>
+          只对已通过代码门禁的成年角色生效，用来减少出戏道歉与 OOC 拒绝；不会解除未成年标记，也不能绕过服务商的硬性审核。同一时间只启用一套。
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
+          {JAILBREAK_VARIANTS.map((variant) => {
+            const active = selectedJailbreak === variant.id;
+            return (
+              <button
+                key={variant.id}
+                type="button"
+                disabled={!settings.enableNsfw}
+                onClick={() => selectJailbreak(active ? '' : variant.id)}
+                className="px-2 py-2 font-serif text-[12px] tracking-[0.12em] transition-all disabled:cursor-not-allowed"
+                style={{
+                  color: active ? 'rgb(var(--tj-on-accent))' : 'rgb(var(--tj-text-primary))',
+                  background: active
+                    ? 'linear-gradient(135deg, rgba(var(--tj-btn-primary-start), 0.95), rgba(var(--tj-btn-primary-end), 0.86))'
+                    : 'rgba(var(--tj-bg-secondary), 0.68)',
+                  border: active
+                    ? '1px solid rgba(var(--tj-text-primary), var(--tj-edge))'
+                    : '1px solid rgba(var(--tj-accent-primary), var(--tj-edge-tint-weak))',
+                  clipPath: smallClip,
+                }}
+              >
+                {variant.label}
+                {active ? ' · 已启用' : ''}
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-2 text-[11px]" style={{ color: 'rgba(var(--tj-text-secondary), 0.58)' }}>
+          当前：{selectedJailbreak ? JAILBREAK_VARIANTS.find((v) => v.id === selectedJailbreak)?.label : '未启用'}。再次点击已启用项可关闭。
+        </div>
+      </div>
 
       <div
         className="px-4 py-4"

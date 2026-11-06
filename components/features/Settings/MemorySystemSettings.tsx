@@ -211,6 +211,55 @@ export function MemorySystemSettingsTab({ settings, onChange, apiSettings, onPer
         </div>
       </Section>
 
+      <Section title="角色记忆（事件 × 角色）">
+        <ToggleField
+          label="启用角色记忆注入"
+          desc="按当前在场角色注入她自己记得的事：亲历、目击、被告知或背景印象。只代表该角色的视角，不是全知事实；「听说」「模糊」的内容她可能记错。"
+          checked={memory.角色记忆启用}
+          onChange={(checked) => patchMemory({ 角色记忆启用: checked })}
+        />
+        <div className="grid gap-3 md:grid-cols-2">
+          <NumberField
+            label="每角色注入条数"
+            value={memory.角色记忆每角色条数}
+            onChange={(value) => patchMemory({ 角色记忆每角色条数: Math.max(1, Math.floor(value)) })}
+            hint="每个在场角色最多注入几条；建议 2-4 条。"
+          />
+          <NumberField
+            label="总字数上限"
+            value={memory.角色记忆注入字数}
+            onChange={(value) => patchMemory({ 角色记忆注入字数: Math.max(200, Math.floor(value)) })}
+            hint="整段角色记忆的字符预算，超出按重要度截断。"
+            step={100}
+            min={200}
+          />
+          <NumberField
+            label="重复注入抑制"
+            value={memory.角色记忆抑制回合}
+            onChange={(value) => patchMemory({ 角色记忆抑制回合: Math.max(0, Math.floor(value)) })}
+            hint="同一角色对同一事件在此回合数内不重复注入；0 表示不抑制。"
+            min={0}
+            max={10}
+          />
+        </div>
+        <ToggleField
+          label="注入未了之事"
+          desc="把在场角色尚未完成的约定、未解决冲突和未完成事项附在角色记忆末尾，提醒主模型不要忘记收线。"
+          checked={memory.未了之事启用}
+          onChange={(checked) => patchMemory({ 未了之事启用: checked })}
+        />
+        <NumberField
+          label="未了之事条数"
+          value={memory.未了之事条数}
+          onChange={(value) => patchMemory({ 未了之事条数: Math.max(1, Math.floor(value)) })}
+          hint="整段角色记忆里最多列出几条未了之事；建议 3-6 条。"
+          min={1}
+        />
+        <div className="text-[11px] leading-relaxed" style={{ color: 'rgba(var(--tj-text-secondary), 0.7)' }}>
+          角色记忆从每回合的「知情映射」自动派生：参与人=亲历、亲见=目击、被告知=听说、背景在场=模糊印象；不调模型、不写入正文。旧档载入后从下一回合开始积累。清晰度按重要度分为细节 / 画面 / 标签 / 影子，越低越模糊。
+        </div>
+      </Section>
+
       <Section title="记忆总结 API">
         <div className="grid gap-3 md:grid-cols-2">
           <SelectField

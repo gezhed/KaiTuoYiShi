@@ -73,6 +73,13 @@ NPC 账本示例：
 {"type":"npc","id":"npc_stelle","name":"星","memory":"星和玩家在观景车厢同步拿起蜂蜜奶酥，并用营养膏玩笑给出正面评价。","recentInteraction":"星与玩家一起尝点心，用轻松吐槽回应帕姆的手艺。","sharedExperiences":["在观景车厢一起尝蜂蜜奶酥并评价味道"],"evidence":"正文写明星和玩家同时拿点心，星给出正面评价"}
 {"type":"npc","name":"陈老伯","gender":"男","memory":"陈老伯在玩家帮助修复通讯塔后，留下自己的联络频道，表示以后有需要可以找他。","recentInteraction":"陈老伯委托玩家修复通讯塔，事后主动留下联络方式。","openItems":["陈老伯留给玩家的联络频道，后续可主动联系"],"evidence":"正文写明陈老伯委托修复并留下联络频道"}
 
+### 角色关系：npc_relation
+- 字段：from、to、relation、stage、reason、evidence。
+- 只在正文明确发生关系变化时输出：初次结识、结伴同行、明显熟络、决裂/敌对、确立亲密关系，或多人关系共识（如"同一后宫的姐妹"）。
+- stage 可选：陌生 / 认识 / 同行 / 熟识 / 亲近 / 挚友 / 亲密 / 敌对 / 复杂；不确定就不写。
+- 不要以玩家为 from/to；普通对话、单回合情绪、小幅好感变化不输出。
+- 示例：{"type":"npc_relation","from":"三月七","to":"星","relation":"同一列车的伙伴","stage":"同行","reason":"星上车后并肩行动","evidence":"正文写明两人开始以伙伴相称"}
+
 ### 物品：item
 - 字段：action="gain"、category、name、description、quantity、quality、stackable、source、sourceDescription、narrativeEffects、evidence。
 - category 只能是 food / consumable / lightcone / weapon / clothing / accessory / memento / key。

@@ -8,6 +8,11 @@ import { STATIC_ASSET_FALLBACK_AVATAR } from '@/utils/staticAssets';
 import type { VariableExecContext } from '@/utils/variableExecContext';
 import { DEFAULT_EXEC_CTX } from '@/utils/variableExecContext';
 import { normalizeStringArray } from '@/models/imageGeneration';
+import {
+  合并NPC关系脉络,
+  归一化NPC关系脉络,
+  type NPC关系脉络,
+} from '@/models/npcRelationship';
 export type NPC阶位 = 'companion' | 'extra';
 
 export type NPC性别 = '男' | '女' | '其他';
@@ -29,6 +34,8 @@ export const NPC同行记忆来源列表 = ['正文', '手机', '新闻', '变�
 export type NPC同行记忆来源 = (typeof NPC同行记忆来源列表)[number];
 export type NPC头像槽位 = '档案' | '正文' | '手机';
 export type NPC_NSFW年龄确认 = 'adult' | 'unknown' | 'minor_blocked';
+/** 代码层 NSFW 资格。manual 覆盖只对“年龄未确认”生效；minor_blocked 始终硬禁。 */
+export type NPC_NSFW资格 = 'allowed' | 'blocked';
 
 export function 规范NPC记忆键(turn: number | string, text: string): string {
   return `${String(turn)}:${规范记忆摘要(text)}`;
@@ -242,6 +249,10 @@ export interface NPC账本选择结果 {
 export interface NPC_NSFW档案 {
   enabled?: boolean;
   年龄确认?: NPC_NSFW年龄确认;
+  /** 玩家手动覆盖；来源为 manual 时优先于自动判断。 */
+  NSFW资格?: NPC_NSFW资格;
+  NSFW资格来源?: 'auto' | 'manual';
+  NSFW资格原因?: string;
   亲密阶段?: string;
   边界?: string;
   偏好?: string[];
@@ -442,6 +453,8 @@ export interface NPC记录 {
   禁止遗忘?: string[];
   总结记忆?: NPC总结记忆条目[];
   约定?: 约定结构[];
+  关系脉络?: NPC关系脉络[];
+  关系网已补种?: boolean;
   备注: string[];
   原著角色?: boolean;
   NSFW档案?: NPC_NSFW档案;
@@ -473,6 +486,7 @@ export function 创建NPC记录(input: {
   头像?: string;
   图像档案?: NPC记录['图像档案'];
   NSFW档案?: NPC记录['NSFW档案'];
+  关系脉络?: NPC关系脉络[];
 }, ctx?: VariableExecContext): NPC记录 {
   const eff = ctx ?? DEFAULT_EXEC_CTX;
   return {
@@ -495,6 +509,8 @@ export function 创建NPC记录(input: {
     头像: input.头像,
     图像档案: input.图像档案,
     NSFW档案: input.NSFW档案,
+    关系脉络: input.关系脉络 ?? [],
+    关系网已补种: false,
     备注: [],
     原著角色: input.原著角色,
   };
@@ -545,6 +561,7 @@ function 归一化单个NPC记录(source: Partial<NPC记录> & Record<string, un
   const rawMemories = source.同行记忆 ?? source.memories ?? source.memory;
   const rawSummaryMemories = source.总结记忆 ?? source.summaryMemories ?? source.memorySummaries;
   const rawNotes = source.备注 ?? source.notes;
+  const rawRelations = source.关系脉络 ?? source.relations;
   const rawAvatar = source.头像 ?? source.avatar ?? source.avatarUrl;
   const rawNSFW = source.NSFW档案 ?? source.nsfw ?? source.NSFW;
   const rawImage = source.图像档案 ?? source.image ?? source.images;
@@ -586,6 +603,14 @@ function 归一化单个NPC记录(source: Partial<NPC记录> & Record<string, un
     禁止遗忘: normalizeNpcTextList(source.禁止遗忘 ?? source.doNotForget),
     总结记忆: 归一化NPC总结记忆列表(rawSummaryMemories),
     约定: 归一化NPC约定列表(source.约定, ctx),
+    关系脉络: 归一化NPC关系脉络(
+      rawRelations,
+      [
+        name,
+        ...(typeof rawAlias === 'string' ? rawAlias.split(/[、/／,，]/) : []),
+      ].map((item) => item.trim()).filter(Boolean),
+    ),
+    关系网已补种: Boolean(source.关系网已补种 ?? source.relationshipSeeded),
     备注: Array.isArray(rawNotes)
       ? rawNotes.filter((note): note is string => typeof note === 'string')
       : [],
@@ -623,6 +648,8 @@ function 合并NPC记录(base: NPC记录, incoming: NPC记录): NPC记录 {
     禁止遗忘: 去重文本列表([...(base.禁止遗忘 ?? []), ...(incoming.禁止遗忘 ?? [])]),
     总结记忆: 合并NPC总结记忆(base.总结记忆 ?? [], incoming.总结记忆 ?? []),
     约定: 合并NPC约定列表(base.约定 ?? [], incoming.约定 ?? []),
+    关系脉络: 合并NPC关系脉络(base.关系脉络 ?? [], incoming.关系脉络 ?? []),
+    关系网已补种: Boolean(base.关系网已补种 || incoming.关系网已补种),
     备注: 去重文本列表([...base.备注, ...incoming.备注]),
     原著角色: Boolean(base.原著角色 || incoming.原著角色),
     头像: preferred.头像 ?? base.头像 ?? incoming.头像,
@@ -746,6 +773,32 @@ function 匹配NPC原著角色(name: string, alias?: string): ReturnType<typeof 
     if (canonical) return canonical;
   }
   return null;
+}
+
+const 非人物姓名集合 = new Set([
+  '系统', '提示', '旁白', '正文', '剧情', '任务', '选项', '状态', '判定', '声音', '气息', '目光', '视线',
+  '众人', '人群', '大家', '所有人', '某人', '有人', '对方', '自己', '你', '我', '他', '她', '它',
+  '玩家', '旅人', '主角', '开拓者', '列车', '房间', '走廊', '大厅', '门外', '窗外', '天空', '地面', '空气',
+  '门', '窗', '路', '街', '桥', '山', '河', '湖', '海',
+]);
+
+/**
+ * 变量模型偶尔会把地点、物品、组织、群体或感官描写当成人物名。
+ * 这里只做保守过滤：明显不像姓名的字符串直接拒绝；不确定时放行。
+ */
+export function 是疑似人物姓名(name: string): boolean {
+  const text = name.trim();
+  if (!text) return false;
+  if (非人物姓名集合.has(text)) return false;
+  if (/^[0-9０-９]+$/.test(text)) return false;
+  if (/[，。！？；：、,.!?;:"“”'‘’（）()\u005B\u005D【】<>《》]/.test(text)) return false;
+  if (/(他们|她们|它们|人们|众人|大家)$/.test(text)) return false;
+  if (/(某个|一个|那个|这个|那道|这道).*(声音|气息|目光|视线|影子|背影|人影|脚步)$/.test(text)) return false;
+  if (/的\s*(声音|气息|目光|视线|影子|背影|人影|脚步|手掌|手指|脸庞|眼睛)$/.test(text)) return false;
+  if (/^第.{1,6}(章|回|幕|天|日|号)/.test(text)) return false;
+  if (text.length > 12) return false;
+  if (/[\u4e00-\u9fa5]/.test(text) && /\s/.test(text)) return false;
+  return true;
 }
 
 function 规范化NPC身份文本(name: string): string {
@@ -992,6 +1045,9 @@ function 归一化NSFW档案(raw: unknown): NPC记录['NSFW档案'] {
   const note = typeof obj.备注 === 'string' ? obj.备注.trim() : undefined;
   const enabled = Boolean(obj.enabled);
   const age = normalizeNsfwAge(obj.年龄确认);
+  const eligibility = obj.NSFW资格 === 'allowed' || obj.NSFW资格 === 'blocked' ? obj.NSFW资格 : undefined;
+  const eligibilitySource = eligibility && obj.NSFW资格来源 === 'manual' ? 'manual' : undefined;
+  const eligibilityReason = eligibility && typeof obj.NSFW资格原因 === 'string' ? obj.NSFW资格原因.trim() : undefined;
   const stage = typeof obj.亲密阶段 === 'string' ? obj.亲密阶段.trim() : undefined;
   const boundary = typeof obj.边界 === 'string' ? obj.边界.trim() : undefined;
   const legacyBodyArchive = normalizeLegacyNsfwBodyArchive(obj.身体档案);
@@ -1001,6 +1057,7 @@ function 归一化NSFW档案(raw: unknown): NPC记录['NSFW档案'] {
   if (
     !enabled &&
     !age &&
+    !eligibility &&
     !stage &&
     !boundary &&
     !preferences.length &&
@@ -1019,6 +1076,9 @@ function 归一化NSFW档案(raw: unknown): NPC记录['NSFW档案'] {
   return {
     enabled,
     年龄确认: age,
+    NSFW资格: eligibility,
+    NSFW资格来源: eligibilitySource,
+    NSFW资格原因: eligibilityReason,
     亲密阶段: stage,
     边界: boundary,
     偏好: preferences,

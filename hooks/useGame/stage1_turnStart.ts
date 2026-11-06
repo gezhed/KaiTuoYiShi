@@ -5,6 +5,8 @@ import { compactPreTurnSnapshot } from '@/utils/saveRuntimeCompactor';
 import { compactChatHistoryForLongSession } from '@/utils/longSessionRetention';
 import { writeTurnLeaf } from './workflowTransaction';
 import { projectRecovery } from './recoveryActions';
+import { 清空角色记忆注入标记 } from '@/services/memoryCharacterRecall';
+import { 补种NPC关系网 } from '@/models/npcRelationship';
 import type { TurnContext } from './turnTypes';
 
 export async function stage1_turnStart(
@@ -14,6 +16,10 @@ export async function stage1_turnStart(
   effectiveWorld: 世界状态,
 ) {
   const { state } = ctx;
+  清空角色记忆注入标记();
+  const seededNpc = 补种NPC关系网(state.NPC, state.智库.条目);
+  const npcChanged = seededNpc !== state.NPC;
+  if (npcChanged) state.setNPC(seededNpc);
   const preTurnSnapshot = compactPreTurnSnapshot({
     旅人: state.旅人,
     世界: effectiveWorld,
@@ -21,7 +27,7 @@ export async function stage1_turnStart(
     忆庭: state.忆庭,
     智库: state.智库,
     手机: state.手机,
-    NPC: state.NPC,
+    NPC: npcChanged ? seededNpc : state.NPC,
     相册: state.相册,
     新闻: state.新闻,
     剧情: state.剧情,
@@ -53,6 +59,7 @@ export async function stage1_turnStart(
     chatHistory: updatedHistory,
     turnPhase: 'awaitingLanding',
     recoveryContext,
+    ...(npcChanged ? { NPC: seededNpc } : {}),
   });
 
   state.setChatHistory(updatedHistory);

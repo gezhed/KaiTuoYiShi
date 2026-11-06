@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { VariableSetters } from '@/utils/variableExecutor';
 import type { 剧情编织系统 } from '@/models/storyWeaving';
@@ -157,6 +157,15 @@ export function VariableManagerTab(props: Props) {
     updateDraft(arr);
   };
 
+  const deleteArrayItem = (index: number) => {
+    if (props.editingLocked || !isUnknownArray(draft)) return;
+    if (!confirm('删除这一条？保存后才会写入存档。')) return;
+    const arr = [...draft];
+    arr.splice(index, 1);
+    updateDraft(arr);
+    setActiveArrayIndex((current) => Math.max(0, Math.min(current, arr.length - 1)));
+  };
+
   const [prevActiveKey, setPrevActiveKey] = useState(activeKey);
   if (prevActiveKey !== activeKey) {
     setPrevActiveKey(activeKey);
@@ -192,6 +201,7 @@ export function VariableManagerTab(props: Props) {
           onSearch={setArraySearch}
           activeIndex={activeArrayIndex}
           onSelect={setActiveArrayIndex}
+          onDelete={deleteArrayItem}
           accent={activeSystem.accent}
         />
       )}

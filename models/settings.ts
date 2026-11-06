@@ -284,6 +284,16 @@ export interface 手机系统设置 {
   groupCooldownTurns: number;
   privateArchiveThreshold: number;
   groupArchiveThreshold: number;
+  /** 每 3~5 回合让不在场角色发朋友圈，作为主线之外的生活补充。 */
+  朋友圈启用: boolean;
+  朋友圈间隔最小: number;
+  朋友圈间隔最大: number;
+  朋友圈人数最小: number;
+  朋友圈人数最大: number;
+  /** 朋友圈是否以“被告知”形式并入记忆与角色记忆。 */
+  朋友圈并入记忆: boolean;
+  /** 朋友圈动态是否调用文生图，为带配图描述的动态生成一张生活照。 */
+  朋友圈生图启用: boolean;
 }
 
 export interface 智库系统设置 {
@@ -631,6 +641,12 @@ const 记忆系统默认值 = {
   向量召回TopK: 4,
   向量召回最低相似度: 0.4,
   向量召回注入字数: 1200,
+  角色记忆启用: true,
+  角色记忆每角色条数: 3,
+  角色记忆注入字数: 900,
+  角色记忆抑制回合: 2,
+  未了之事启用: true,
+  未了之事条数: 5,
   剧情回忆完整原文条数N: 20,
   忆庭独立精炼: false,
   忆庭命中并存注入: true,
@@ -684,6 +700,12 @@ const 记忆系统设置Schema = z.object({
   向量召回TopK: 阈值.catch(记忆系统默认值.向量召回TopK),
   向量召回最低相似度: z.number().min(0).max(1).catch(记忆系统默认值.向量召回最低相似度),
   向量召回注入字数: 阈值.catch(记忆系统默认值.向量召回注入字数),
+  角色记忆启用: z.boolean().catch(记忆系统默认值.角色记忆启用),
+  角色记忆每角色条数: 阈值.catch(记忆系统默认值.角色记忆每角色条数),
+  角色记忆注入字数: 阈值.catch(记忆系统默认值.角色记忆注入字数),
+  角色记忆抑制回合: z.number().int().min(0).max(10).catch(记忆系统默认值.角色记忆抑制回合),
+  未了之事启用: z.boolean().catch(记忆系统默认值.未了之事启用),
+  未了之事条数: 阈值.catch(记忆系统默认值.未了之事条数),
   剧情回忆完整原文条数N: 阈值.catch(记忆系统默认值.剧情回忆完整原文条数N),
   忆庭独立精炼: z.boolean().catch(记忆系统默认值.忆庭独立精炼),
   忆庭命中并存注入: z.boolean().catch(记忆系统默认值.忆庭命中并存注入),
@@ -719,6 +741,13 @@ export function 创建默认手机系统设置(): 手机系统设置 {
     groupCooldownTurns: 5,
     privateArchiveThreshold: 20,
     groupArchiveThreshold: 30,
+    朋友圈启用: true,
+    朋友圈间隔最小: 3,
+    朋友圈间隔最大: 5,
+    朋友圈人数最小: 2,
+    朋友圈人数最大: 4,
+    朋友圈并入记忆: true,
+    朋友圈生图启用: true,
   };
 }
 
@@ -761,7 +790,7 @@ export function 归一化星际和平周报设置(input?: Partial<星际和平�
 export function 归一化手机系统设置(input?: Partial<手机系统设置>): 手机系统设置 {
   const defaults = 创建默认手机系统设置();
   if (!input) return defaults;
-  return {
+  const result: 手机系统设置 = {
     ...defaults,
     ...input,
     api: normalizeApiOverride(input.api, defaults.api),
@@ -770,7 +799,17 @@ export function 归一化手机系统设置(input?: Partial<手机系统设置>)
     groupCooldownTurns: Math.max(0, Math.trunc(input.groupCooldownTurns ?? defaults.groupCooldownTurns)),
     privateArchiveThreshold: Math.max(3, Math.trunc(input.privateArchiveThreshold ?? defaults.privateArchiveThreshold)),
     groupArchiveThreshold: Math.max(6, Math.trunc(input.groupArchiveThreshold ?? defaults.groupArchiveThreshold)),
+    朋友圈启用: input.朋友圈启用 ?? defaults.朋友圈启用,
+    朋友圈间隔最小: Math.max(1, Math.min(10, Math.trunc(input.朋友圈间隔最小 ?? defaults.朋友圈间隔最小) || defaults.朋友圈间隔最小)),
+    朋友圈间隔最大: Math.max(1, Math.min(10, Math.trunc(input.朋友圈间隔最大 ?? defaults.朋友圈间隔最大) || defaults.朋友圈间隔最大)),
+    朋友圈人数最小: Math.max(1, Math.min(6, Math.trunc(input.朋友圈人数最小 ?? defaults.朋友圈人数最小) || defaults.朋友圈人数最小)),
+    朋友圈人数最大: Math.max(1, Math.min(6, Math.trunc(input.朋友圈人数最大 ?? defaults.朋友圈人数最大) || defaults.朋友圈人数最大)),
+    朋友圈并入记忆: input.朋友圈并入记忆 ?? defaults.朋友圈并入记忆,
+    朋友圈生图启用: input.朋友圈生图启用 ?? defaults.朋友圈生图启用,
   };
+  if (result.朋友圈间隔最大 < result.朋友圈间隔最小) result.朋友圈间隔最大 = result.朋友圈间隔最小;
+  if (result.朋友圈人数最大 < result.朋友圈人数最小) result.朋友圈人数最大 = result.朋友圈人数最小;
+  return result;
 }
 
 export function 归一化智库系统设置(input?: Partial<智库系统设置>): 智库系统设置 {

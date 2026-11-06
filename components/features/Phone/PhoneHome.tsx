@@ -4,6 +4,7 @@ export function PhoneHome({
   unread,
   contactCount,
   chatCount,
+  momentCount,
   activeApp,
   onOpen,
   onClose,
@@ -12,8 +13,9 @@ export function PhoneHome({
   unread: number;
   contactCount: number;
   chatCount: number;
+  momentCount: number;
   activeApp: string | null;
-  onOpen: (view: 'messages' | 'contacts' | 'news' | 'wallpapers') => void;
+  onOpen: (view: 'messages' | 'contacts' | 'news' | 'wallpapers' | 'moments') => void;
   onClose: () => void;
   wallpaper?: string;
 }) {
@@ -66,6 +68,13 @@ export function PhoneHome({
           glyph="◇"
           active={activeApp === 'contacts'}
           onClick={() => onOpen('contacts')}
+        />
+        <AppIcon
+          title="朋友圈"
+          subtitle={`${momentCount} 条动态`}
+          glyph="◎"
+          active={activeApp === 'moments'}
+          onClick={() => onOpen('moments')}
         />
         <AppIcon
           title="星际周报"

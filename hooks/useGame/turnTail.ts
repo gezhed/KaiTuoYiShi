@@ -70,13 +70,13 @@ export async function runTurnTail(
     智库: d.zhikuAfterRuntimeUnlock ?? undefined,
     手机: d.phoneAfterFallbackSeed,
     新闻: d.newsAfterGeneration ?? d.variableOverrides?.新闻,
-    记忆: d.memoryAfterStoryProgress ?? undefined,
+    记忆: d.memoryAfterMoments ?? d.memoryAfterStoryProgress ?? undefined,
     忆庭: d.yitingAfterTurnRecall,
     chatHistory: d.finalHistoryForSave,
     相册: d.相册After,
   }));
 
-  const memoryAfterStoryProgress = d.memoryAfterStoryProgress ?? undefined;
+  const memoryAfterStoryProgress = d.memoryAfterMoments ?? d.memoryAfterStoryProgress ?? undefined;
   const yitingAfterTurnRecall = d.yitingAfterTurnRecall;
   const phoneAfterFallbackSeed = d.phoneAfterFallbackSeed;
 

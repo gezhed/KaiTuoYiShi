@@ -2,7 +2,7 @@ import { matchCanonical } from '@/data/canonicalCharacters';
 import type { NPC记录, NPC性别, NPC_NSFW档案 } from '@/models/npc';
 import type { 智库系统, 智库条目 } from '@/models/zhiku';
 import { 获取智库人物名列表, 解析智库软结构标签, 比较智库人物节点 } from '@/models/zhiku';
-import { getNsfwArchiveBlockReason } from '@/utils/nsfwArchivePolicy';
+import { getNsfwIdentityBlockReason } from '@/utils/nsfwArchivePolicy';
 
 export type CanonicalArchiveBaseline = {
   性别?: NPC性别;
@@ -201,7 +201,7 @@ function shouldCreateNsfwBaseline(
   options: { nsfwEnabled: boolean; maleNsfwArchiveEnabled: boolean },
 ): boolean {
   if (!options.nsfwEnabled) return false;
-  if (getNsfwArchiveBlockReason(npc, npc.姓名)) return false;
+  if (getNsfwIdentityBlockReason(npc, npc.姓名)) return false;
   const gender = baseline?.性别 ?? npc.性别;
   if (gender === '男' && !options.maleNsfwArchiveEnabled) return false;
   return npc.阶位 === 'companion' || npc.同行 || npc.原著角色 === true;

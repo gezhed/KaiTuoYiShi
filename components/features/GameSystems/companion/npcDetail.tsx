@@ -4,14 +4,17 @@ import type { NPC记录, NPC_NSFW年龄确认 } from '@/models/npc';
 import { 格式化NPC关系, 读取NPC头像 } from '@/models/npc';
 import type { 相册系统 } from '@/models/imageGeneration';
 import type { NPC关系规划条目 } from '@/services/npcRelationshipPlanning';
+import type { NPC关系脉络, NPC关系阶段 } from '@/models/npcRelationship';
+import { NPC关系阶段列表, 更新NPC关系脉络 } from '@/models/npcRelationship';
 import { 解析相册资源引用 } from '@/utils/albumActions';
+import { getNsfwEligibility } from '@/utils/nsfwArchivePolicy';
 import { ResilientImage } from '@/components/ui/ResilientImage';
 import { AffinityBadge } from './affinity';
 import { accentColor, bodyColor, faintColor, mutedColor, nsfwColor, panelStyle, quietSurface, smallClip, titleColor } from './constants';
 import { MemoryPanel } from './memory';
 import { ActionChip, Avatar, Chip, DetailBlock, EmptyText, InfoPill, Paragraph, TabButton } from './primitives';
 
-type DetailTab = 'archive' | 'planning' | 'memory' | 'nsfw';
+type DetailTab = 'archive' | 'planning' | 'relations' | 'memory' | 'nsfw';
 
 export function NpcDetail({
   npc,
@@ -19,9 +22,12 @@ export function NpcDetail({
   onPromote,
   onDemote,
   onToggleTraveling,
+  onDelete,
+  onUpdateNpc,
   nsfwEnabled,
   planning,
   devMode,
+  turnCount,
   onEditAvatar,
 }: {
   npc: NPC记录;
@@ -29,14 +35,72 @@ export function NpcDetail({
   onPromote: () => void;
   onDemote: () => void;
   onToggleTraveling: () => void;
+  onDelete?: () => void;
+  onUpdateNpc?: (patch: Partial<NPC记录>) => void;
   nsfwEnabled: boolean;
   planning?: NPC关系规划条目;
   devMode: boolean;
+  turnCount?: number;
   /** 点视觉档案里的槽位卡片时打开头像编辑器。 */
   onEditAvatar?: (slot: '档案' | '正文' | '手机' | '立绘') => void;
 }) {
   const isCompanion = npc.阶位 === 'companion';
   const [detailTab, setDetailTab] = useState<DetailTab>('archive');
+  const [relationDraft, setRelationDraft] = useState<{ 目标姓名: string; 关系: string; 阶段: NPC关系阶段 | ''; 说明: string }>({
+    目标姓名: '',
+    关系: '',
+    阶段: '',
+    说明: '',
+  });
+  const [editingRelationId, setEditingRelationId] = useState<string | null>(null);
+  const [relationEdit, setRelationEdit] = useState<{ 关系: string; 阶段: NPC关系阶段 | ''; 说明: string }>({
+    关系: '',
+    阶段: '',
+    说明: '',
+  });
+  const relations = npc.关系脉络 ?? [];
+  const relationTurn = turnCount ?? npc.最近回合;
+
+  const addRelation = () => {
+    if (!onUpdateNpc) return;
+    const target = relationDraft.目标姓名.trim();
+    if (!target) return;
+    if (relations.some((edge) => edge.目标姓名 === target)) return;
+    onUpdateNpc({
+      关系脉络: 更新NPC关系脉络(relations, {
+        目标姓名: target,
+        关系: relationDraft.关系.trim() || undefined,
+        阶段: relationDraft.阶段 || undefined,
+        说明: relationDraft.说明.trim() || undefined,
+        回合: relationTurn,
+        原因: '手动添加',
+        来源: '玩家',
+      }),
+    });
+    setRelationDraft({ 目标姓名: '', 关系: '', 阶段: '', 说明: '' });
+  };
+
+  const startRelationEdit = (edge: NPC关系脉络) => {
+    setEditingRelationId(edge.id);
+    setRelationEdit({ 关系: edge.关系, 阶段: edge.阶段 ?? '', 说明: edge.说明 ?? '' });
+  };
+
+  const saveRelationEdit = (edge: NPC关系脉络) => {
+    if (!onUpdateNpc) return;
+    onUpdateNpc({
+      关系脉络: 更新NPC关系脉络(relations, {
+        目标姓名: edge.目标姓名,
+        目标NPCID: edge.目标NPCID,
+        关系: relationEdit.关系.trim() || edge.关系,
+        阶段: relationEdit.阶段 || undefined,
+        说明: relationEdit.说明.trim() || undefined,
+        回合: relationTurn,
+        原因: '手动修改',
+        来源: '玩家',
+      }),
+    });
+    setEditingRelationId(null);
+  };
 
   const effectiveDetailTab: DetailTab =
     detailTab === 'nsfw' && !nsfwEnabled
@@ -115,6 +179,20 @@ export function NpcDetail({
               >
                 初见第 {npc.初见回合} 回合
               </span>
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  className="px-2 py-1 font-serif text-[12px] tracking-[0.16em] transition-all hover:bg-[rgba(var(--tj-danger),0.12)]"
+                  style={{
+                    color: 'rgba(var(--tj-danger), 0.92)',
+                    border: '1px solid rgba(var(--tj-danger), var(--tj-edge-tint))',
+                    clipPath: smallClip,
+                  }}
+                >
+                  移出档案
+                </button>
+              )}
             </div>
           </div>
 
@@ -122,7 +200,7 @@ export function NpcDetail({
             <div className="flex justify-end">
               <AffinityBadge value={npc.好感度} />
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
               <TabButton active={effectiveDetailTab === 'archive'} onClick={() => setDetailTab('archive')}>
                 伙伴档案
               </TabButton>
@@ -133,6 +211,9 @@ export function NpcDetail({
               )}
               <TabButton active={effectiveDetailTab === 'memory'} onClick={() => setDetailTab('memory')}>
                 {devMode ? '记忆账本' : '同行记忆'}
+              </TabButton>
+              <TabButton active={effectiveDetailTab === 'relations'} onClick={() => setDetailTab('relations')}>
+                关系脉络
               </TabButton>
               {nsfwEnabled && (
                 <TabButton active={effectiveDetailTab === 'nsfw'} onClick={() => setDetailTab('nsfw')}>
@@ -200,7 +281,160 @@ export function NpcDetail({
 
       {effectiveDetailTab === 'memory' && <MemoryPanel npc={npc} devMode={devMode} />}
 
-      {nsfwEnabled && effectiveDetailTab === 'nsfw' && <NSFWArchivePanel npc={npc} />}
+      {effectiveDetailTab === 'relations' && (
+        <section className="px-4 py-3" style={panelStyle}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="font-serif text-[12px] tracking-[0.22em]" style={{ color: accentColor }}>
+              关系脉络
+            </div>
+            <div className="text-[11px]" style={{ color: mutedColor }}>
+              {relations.length} / 24
+            </div>
+          </div>
+          <div className="mt-3 space-y-2">
+            {relations.length ? relations.map((edge) => (
+              <div
+                key={edge.id}
+                className="rounded-md border px-3 py-2"
+                style={{ borderColor: 'rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.02)' }}
+              >
+                {editingRelationId === edge.id ? (
+                  <div className="space-y-2">
+                    <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                      <input
+                        value={relationEdit.关系}
+                        onChange={(event) => setRelationEdit((prev) => ({ ...prev, 关系: event.target.value }))}
+                        placeholder="关系（如：同一后宫的姐妹）"
+                        className="min-w-0 rounded border bg-transparent px-2 py-1 text-xs outline-none"
+                        style={{ borderColor: 'rgba(255,255,255,0.14)', color: bodyColor }}
+                      />
+                      <select
+                        value={relationEdit.阶段}
+                        onChange={(event) => setRelationEdit((prev) => ({ ...prev, 阶段: event.target.value as NPC关系阶段 | '' }))}
+                        className="rounded border bg-transparent px-2 py-1 text-xs outline-none"
+                        style={{ borderColor: 'rgba(255,255,255,0.14)', color: bodyColor, background: 'rgba(18,18,22,0.96)' }}
+                      >
+                        <option value="">不标阶段</option>
+                        {NPC关系阶段列表.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
+                      </select>
+                    </div>
+                    <input
+                      value={relationEdit.说明}
+                      onChange={(event) => setRelationEdit((prev) => ({ ...prev, 说明: event.target.value }))}
+                      placeholder="说明（可选）"
+                      className="w-full rounded border bg-transparent px-2 py-1 text-xs outline-none"
+                      style={{ borderColor: 'rgba(255,255,255,0.14)', color: bodyColor }}
+                    />
+                    <div className="flex gap-3">
+                      <button type="button" onClick={() => saveRelationEdit(edge)} className="text-[11px]" style={{ color: accentColor }}>
+                        保存
+                      </button>
+                      <button type="button" onClick={() => setEditingRelationId(null)} className="text-[11px]" style={{ color: mutedColor }}>
+                        取消
+                      </button>
+                      <span className="ml-auto text-[10px]" style={{ color: faintColor }}>
+                        未保存前不会写入存档
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-serif text-[13px]" style={{ color: titleColor }}>{edge.目标姓名}</span>
+                      <span className="text-[11px]" style={{ color: accentColor }}>{edge.关系}</span>
+                      {edge.阶段 && (
+                        <span
+                          className="rounded border px-1.5 py-0.5 text-[10px]"
+                          style={{ borderColor: 'rgba(var(--tj-accent-primary),0.3)', color: accentColor }}
+                        >
+                          {edge.阶段}
+                        </span>
+                      )}
+                      <span className="text-[10px]" style={{ color: faintColor }}>{edge.来源 ?? '资料库'}</span>
+                      {onUpdateNpc && (
+                        <span className="ml-auto flex items-center gap-3">
+                          <button type="button" onClick={() => startRelationEdit(edge)} className="text-[10px]" style={{ color: accentColor }}>
+                            改
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onUpdateNpc({ 关系脉络: relations.filter((item) => item.id !== edge.id) })}
+                            className="text-[10px]"
+                            style={{ color: 'rgba(var(--tj-danger),0.9)' }}
+                          >
+                            删除
+                          </button>
+                        </span>
+                      )}
+                    </div>
+                    {edge.说明 && (
+                      <div className="mt-1 text-[11px] leading-relaxed" style={{ color: bodyColor }}>
+                        {edge.说明}
+                      </div>
+                    )}
+                    {edge.变更记录?.length ? (
+                      <div className="mt-1 space-y-0.5">
+                        {edge.变更记录.slice(-2).map((change, index) => (
+                          <div key={`${change.回合}-${index}`} className="text-[10px]" style={{ color: faintColor }}>
+                            第 {change.回合} 回合：{change.从 ? `${change.从} → ` : ''}{change.到}
+                            {change.原因 ? `（${change.原因}）` : ''}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            )) : (
+              <EmptyText text="暂无关系脉络；开局会从资料库补齐，也可以在这里手动添加。" />
+            )}
+          </div>
+          {onUpdateNpc && (
+            <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto_2fr_auto]">
+              <input
+                value={relationDraft.目标姓名}
+                onChange={(event) => setRelationDraft((prev) => ({ ...prev, 目标姓名: event.target.value }))}
+                placeholder="角色名"
+                className="min-w-0 rounded border bg-transparent px-2 py-1 text-xs outline-none"
+                style={{ borderColor: 'rgba(255,255,255,0.14)', color: bodyColor }}
+              />
+              <input
+                value={relationDraft.关系}
+                onChange={(event) => setRelationDraft((prev) => ({ ...prev, 关系: event.target.value }))}
+                placeholder="关系（如：旧识）"
+                className="min-w-0 rounded border bg-transparent px-2 py-1 text-xs outline-none"
+                style={{ borderColor: 'rgba(255,255,255,0.14)', color: bodyColor }}
+              />
+              <select
+                value={relationDraft.阶段}
+                onChange={(event) => setRelationDraft((prev) => ({ ...prev, 阶段: event.target.value as NPC关系阶段 | '' }))}
+                className="rounded border bg-transparent px-2 py-1 text-xs outline-none"
+                style={{ borderColor: 'rgba(255,255,255,0.14)', color: bodyColor, background: 'rgba(18,18,22,0.96)' }}
+              >
+                <option value="">阶段</option>
+                {NPC关系阶段列表.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
+              </select>
+              <input
+                value={relationDraft.说明}
+                onChange={(event) => setRelationDraft((prev) => ({ ...prev, 说明: event.target.value }))}
+                placeholder="说明（可选）"
+                className="min-w-0 rounded border bg-transparent px-2 py-1 text-xs outline-none"
+                style={{ borderColor: 'rgba(255,255,255,0.14)', color: bodyColor }}
+              />
+              <button
+                type="button"
+                onClick={addRelation}
+                className="rounded border px-3 py-1 text-xs"
+                style={{ borderColor: 'rgba(var(--tj-accent-primary),0.4)', color: accentColor }}
+              >
+                添加
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
+      {nsfwEnabled && effectiveDetailTab === 'nsfw' && <NSFWArchivePanel npc={npc} onUpdateNpc={onUpdateNpc} />}
     </div>
   );
 }
@@ -291,12 +525,36 @@ function AvatarSlotCard({
   );
 }
 
-function NSFWArchivePanel({ npc }: { npc: NPC记录 }) {
+function NSFWArchivePanel({ npc, onUpdateNpc }: { npc: NPC记录; onUpdateNpc?: (patch: Partial<NPC记录>) => void }) {
   const archive = npc.NSFW档案;
   const tags = archive?.标签 ?? [];
   const femaleBodyArchive = archive?.女性身体档案;
   const maleBodyArchive = archive?.男性身体档案;
   const bodyPane = npc.性别 === '男' ? 'male' : 'female';
+  const eligibility = getNsfwEligibility(npc);
+  const canOverride = eligibility.age !== 'minor_blocked';
+  const updateArchive = (patch: NonNullable<NPC记录['NSFW档案']>) => {
+    onUpdateNpc?.({ NSFW档案: { ...(npc.NSFW档案 ?? {}), ...patch } });
+  };
+  const allowNsfw = () => updateArchive({
+    enabled: true,
+    年龄确认: 'adult',
+    NSFW资格: 'allowed',
+    NSFW资格来源: 'manual',
+    NSFW资格原因: '玩家确认该角色成年并允许作为 NSFW 剧情对象',
+  });
+  const blockNsfw = () => updateArchive({
+    NSFW资格: 'blocked',
+    NSFW资格来源: 'manual',
+    NSFW资格原因: '玩家禁止该角色作为 NSFW 剧情对象',
+  });
+  const resetNsfw = () => {
+    const next = { ...(npc.NSFW档案 ?? {}) };
+    delete next.NSFW资格;
+    delete next.NSFW资格来源;
+    delete next.NSFW资格原因;
+    onUpdateNpc?.({ NSFW档案: next });
+  };
   return (
     <DetailBlock title="NSFW档案">
       <div
@@ -319,6 +577,75 @@ function NSFWArchivePanel({ npc }: { npc: NPC记录 }) {
           <Chip tone={archive?.enabled ? 'gold' : 'silver'}>
             {archive?.enabled ? '已启用' : '预留'}
           </Chip>
+        </div>
+
+        <div
+          className="mt-4 px-3 py-3"
+          style={{
+            background: 'rgba(var(--tj-ui-panel-strong), 0.42)',
+            border: '1px solid rgba(var(--tj-ui-nsfw), var(--tj-edge-tint-weak))',
+            clipPath: smallClip,
+          }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="font-serif text-[12px] tracking-[0.18em]" style={{ color: nsfwColor }}>
+              NSFW 资格（代码门禁）
+            </div>
+            <Chip tone={eligibility.allowed ? 'gold' : 'silver'}>
+              {eligibility.allowed ? '允许' : eligibility.level === 'unconfirmed' ? '待确认' : '禁止'}
+            </Chip>
+          </div>
+          <div className="mt-1 text-[11px] leading-relaxed" style={{ color: faintColor }}>
+            {eligibility.reason}
+          </div>
+          <div className="mt-1 text-[11px] leading-relaxed" style={{ color: faintColor }}>
+            只有“允许”的成年角色才能进入成人向正文与档案写入；手动允许不能解除未成年标记。
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={!canOverride || eligibility.allowed}
+              onClick={allowNsfw}
+              className="px-3 py-1.5 font-serif text-[11px] tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-45"
+              style={{
+                color: 'rgb(var(--tj-on-accent))',
+                background: 'linear-gradient(135deg, rgba(var(--tj-ui-nsfw), 0.92), rgba(var(--tj-ui-nsfw), 0.66))',
+                border: '1px solid rgba(var(--tj-ui-nsfw), var(--tj-edge))',
+                clipPath: smallClip,
+              }}
+            >
+              确认成年并允许
+            </button>
+            <button
+              type="button"
+              disabled={!canOverride || (!eligibility.allowed && eligibility.level !== 'unconfirmed')}
+              onClick={blockNsfw}
+              className="px-3 py-1.5 font-serif text-[11px] tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-45"
+              style={{
+                color: nsfwColor,
+                background: 'rgba(var(--tj-ui-nsfw), 0.08)',
+                border: '1px solid rgba(var(--tj-ui-nsfw), var(--tj-edge-tint))',
+                clipPath: smallClip,
+              }}
+            >
+              禁止
+            </button>
+            {eligibility.source === 'manual' && (
+              <button
+                type="button"
+                onClick={resetNsfw}
+                className="px-3 py-1.5 font-serif text-[11px] tracking-[0.12em]"
+                style={{
+                  color: mutedColor,
+                  background: 'rgba(var(--tj-ui-panel), 0.5)',
+                  border: '1px solid rgba(var(--tj-ui-nsfw), var(--tj-edge-tint-weak))',
+                  clipPath: smallClip,
+                }}
+              >
+                恢复自动判断
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="mt-4 grid gap-2 md:grid-cols-3">
@@ -419,7 +746,7 @@ function BodyArchiveSection({ title, children }: { title: string; children: Reac
 }
 
 function formatNsfwAge(age: NPC_NSFW年龄确认 | undefined): string {
-  // 年龄确认是纯展示字段，不参与门禁。
+  // 年龄确认参与代码门禁；展示时只做文案映射。
   if (age === 'adult') return '成人';
   if (age === 'minor_blocked') return '标注未成年';
   if (age === 'unknown') return '未标注';

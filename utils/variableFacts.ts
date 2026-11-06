@@ -3,7 +3,8 @@ import type { VariableState } from './variableRegistry';
 import type { 世界状态 } from '@/models/world';
 import { 对齐世界日期与天数, 推进琥珀日期 } from '@/models/world';
 import type { NPC记录, NPC关系类型 } from '@/models/npc';
-import { 获取NPC关系阶段, 获取NPC兼容关系, 限制NPC好感度 } from '@/models/npc';
+import { 获取NPC关系阶段, 获取NPC兼容关系, 限制NPC好感度, 是疑似人物姓名 } from '@/models/npc';
+import { 更新NPC关系脉络, 归一化关系阶段, 规范化关系姓名, type NPC关系脉络 } from '@/models/npcRelationship';
 import { matchCanonical } from '@/data/canonicalCharacters';
 import type { 物品分类, 物品品质 } from '@/models/inventory';
 import type { 手机系统, 主动来信类型, 主动来信优先级 } from '@/models/phone';
@@ -38,6 +39,10 @@ const FACT_TYPE_ALIASES: Record<string, 变量事实['type']> = {
   npcMemory: 'npc',
   relationship: 'npc',
   伙伴记忆: 'npc',
+  npc_relation: 'npc_relation',
+  npcRelation: 'npc_relation',
+  角色关系: 'npc_relation',
+  关系脉络: 'npc_relation',
   物品: 'item',
   item: 'item',
   item_gain: 'item',
@@ -293,6 +298,20 @@ function 归一化事实(raw: unknown): 变量事实 | null {
     const weather = 读字符串(raw.weather || raw.天气);
     if (!weather) return null;
     return { type: 'weather', weather, evidence: 读字符串(raw.evidence || raw.证据) || undefined };
+  }
+  if (type === 'npc_relation') {
+    const from = 读字符串(raw.from || raw.从 || raw.角色 || raw.角色A || raw.source);
+    const to = 读字符串(raw.to || raw.到 || raw.对象 || raw.角色B || raw.target);
+    if (!from || !to) return null;
+    return {
+      type: 'npc_relation',
+      from,
+      to,
+      relation: 读字符串(raw.relation || raw.关系) || undefined,
+      stage: 归一化关系阶段(raw.stage || raw.阶段),
+      reason: 读字符串(raw.reason || raw.原因 || raw.说明) || undefined,
+      evidence: 读字符串(raw.evidence || raw.证据) || undefined,
+    };
   }
   if (type === 'npc') {
     const id = 读字符串(raw.id);
@@ -668,6 +687,7 @@ export function factsToVariableCommands(
   const maxPhoneSeedsPerTurn = Math.max(0, Math.trunc(options.maxPhoneSeedsPerTurn ?? 2));
   const eff = ctx ?? DEFAULT_EXEC_CTX;
   let phoneSeedsWritten = 0;
+  const relationUpdates = new Map<string, NPC关系脉络[]>();
 
   const push = (command: 变量命令) => commands.push(command);
 
@@ -743,10 +763,14 @@ export function factsToVariableCommands(
     }
 
     if (fact.type === 'npc') {
+      const canonical = matchCanonical(fact.name);
+      if (!canonical && !是疑似人物姓名(fact.name)) {
+        notes.push(`已忽略不像人物名的 NPC「${fact.name}」：地点、物品、群体或感官描写不会被登记进伙伴档案。`);
+        continue;
+      }
       const id = fact.id?.trim() || npcIdFromName(fact.name);
       const existing = findNpc(npcs, id, fact.name);
       if (!existing) {
-        const canonical = matchCanonical(fact.name);
         const initialAffinity = 限制NPC好感度(fact.affinitySet ?? fact.affinityDelta ?? 0);
         push({
           action: 'push',
@@ -827,6 +851,37 @@ export function factsToVariableCommands(
           },
         });
       }
+      continue;
+    }
+
+    if (fact.type === 'npc_relation') {
+      const from = findNpc(npcs, '', fact.from);
+      if (!from) {
+        warnings.push(`npc_relation 已忽略：找不到关系发起人「${fact.from}」，关系变化只更新已入档角色。`);
+        continue;
+      }
+      const toName = fact.to.trim();
+      if (!toName || 规范化关系姓名(from.姓名) === 规范化关系姓名(toName)) {
+        warnings.push(`npc_relation 已忽略：关系对象不能为空或与发起人相同（${fact.from}）。`);
+        continue;
+      }
+      const target = findNpc(npcs, '', toName);
+      const canonical = matchCanonical(toName);
+      if (!target && !canonical && !是疑似人物姓名(toName)) {
+        warnings.push(`npc_relation 已忽略：关系对象「${toName}」不像人物名。`);
+        continue;
+      }
+      const current = relationUpdates.get(from.id) ?? from.关系脉络 ?? [];
+      relationUpdates.set(from.id, 更新NPC关系脉络(current, {
+        目标姓名: target?.姓名 ?? canonical?.name ?? toName,
+        目标NPCID: target?.id,
+        关系: fact.relation,
+        阶段: fact.stage,
+        说明: fact.reason,
+        回合: turn,
+        原因: fact.reason,
+        来源: 'AI',
+      }));
       continue;
     }
 
@@ -948,6 +1003,10 @@ export function factsToVariableCommands(
       });
       phoneSeedsWritten += 1;
     }
+  }
+
+  for (const [npcId, edges] of relationUpdates) {
+    push({ action: 'set', key: `NPC[id=${npcId}].关系脉络`, value: edges });
   }
 
   return { commands, notes, warnings };

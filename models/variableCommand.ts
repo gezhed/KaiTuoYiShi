@@ -1,3 +1,5 @@
+import type { NPC关系阶段 } from './npcRelationship';
+
 export type 变量命令动作 = 'set' | 'add' | 'sub' | 'push' | 'delete';
 
 export interface 变量命令 {
@@ -12,6 +14,7 @@ export type 变量事实类型 =
   | 'time'
   | 'location'
   | 'npc'
+  | 'npc_relation'
   | 'item'
   | 'world_event'
   | 'phone_seed'
@@ -76,6 +79,16 @@ export interface NPC变量事实 {
   unresolvedConflicts?: string[];
   mustRemember?: string[];
   doNotForget?: string[];
+  evidence?: string;
+}
+
+export interface NPC关系变量事实 {
+  type: 'npc_relation';
+  from: string;
+  to: string;
+  relation?: string;
+  stage?: NPC关系阶段;
+  reason?: string;
   evidence?: string;
 }
 
@@ -150,6 +163,7 @@ export type 变量事实 =
   | 地点变量事实
   | 天气变量事实
   | NPC变量事实
+  | NPC关系变量事实
   | 物品变量事实
   | 世界事件变量事实
   | 手机来信变量事实

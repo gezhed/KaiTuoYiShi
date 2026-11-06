@@ -57,6 +57,7 @@ export interface SystemPromptInput {
   yitingInjectionOverride?: string;
   zhikuInjectionOverride?: string;
   memoryRecallInjection?: string;
+  characterMemoryInjection?: string;
   npcLedgerSelection?: NPC账本选择结果;
   triggerType?: string;
   macroCtx?: MacroContext;
